@@ -348,7 +348,7 @@ print(f"Mean EE: {mean_ee:.6f} bits/J")
 
 This implementation went through 6 development iterations. Each version fixed
 specific bugs or improved performance. The full technical detail is in
-[`walkthrough_v6.md`](walkthrough_v6.md).
+[`v6_walkthrough.md`](v6_walkthrough.md).
 
 ### Quick Summary
 
