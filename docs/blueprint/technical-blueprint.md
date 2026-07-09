@@ -70,6 +70,35 @@ single UAV. Carried by **[A]**: no propulsion or EE model at all, disjoint areas
 clients are physically uncoupled and FedAvg is essentially multi-task averaging), discrete
 grid motion, BCD phase search per element (O(L·2^b) per iteration) assumed free of latency.
 
+### 1.4 Why the inherited scene cannot demonstrate utility (quantified)
+
+The motivation for the Stage-3 scenario redesign, in numbers (these arguments double as
+system-model justification text for the paper):
+
+1. **No scarcity.** Arena diagonal √(20²+20²) ≈ 22.6 m; at v_max = 15 m/s a UAV crosses
+   it in ~1.5 s of a 20 s episode — ~92 % of the mission is unconstrained loitering.
+   Trajectory optimization has nothing to trade off.
+2. **Position-insensitive reward.** Without association, every UAV collects from all
+   devices from anywhere; at 5–25 m distances with the inflated ρ₀ every link sits in the
+   flat high-SNR regime of log₂(1+SNR), so moving buys almost nothing. The reward
+   landscape is nearly flat in position — learned path curvature is noise around a flat
+   optimum.
+3. **The RIS has no job.** No device is shadowed; nothing exists that the direct link
+   cannot serve. This is exactly why ρ₀ had to be raised 17 dB "for clearly visible RIS
+   benefit" (v8 README). A RIS shows utility only where direct links fail.
+4. **Degenerate EE.** Propulsion is ~138–168 W across the whole speed range while the
+   numerator barely depends on position (point 2), so the near-optimal policy is "fly at
+   the power-minimum speed (~10 m/s), anywhere" — not a demonstrable capability.
+5. **The 5 m altitude is not a decision.** It is copied verbatim from [J]'s numerical
+   section (UAV [0,0,5]→[16,16,5]); in [J] the scene is best read as an abstract,
+   unitless algorithm benchmark. A real rotary-wing survey UAV flies 30–120 m
+   (regulatory ceiling ≈120 m), which is what makes air-to-ground LoS and the propulsion
+   budget physically meaningful.
+
+Each defect maps to a Stage-3 mechanism: scale + duty cycles + association create
+scarcity (1, 2); the blockage field gives the RIS a structural reason to exist (3);
+realistic altitude and kinematics restore physical stakes (4, 5).
+
 ---
 
 ## Stage 2 — Literature-Level Critique and Positioning
@@ -136,6 +165,20 @@ multi-agent training with the communication budget measured. Sources:
 - https://arxiv.org/pdf/2504.02162 (survey: energy-efficient RIS-UAV networks)
 - https://doi.org/10.3390/s24010178 (RIS-assisted cooperative TDMA)
 - https://pmc.ncbi.nlm.nih.gov/articles/PMC9370948/ (RIS sharing among multiple BSs)
+
+**2025–26 frontier positioning (cite, do not build):** Beyond-Diagonal RIS — elements
+interconnected rather than independently phased — is being pushed for 6G IoT and UAV
+non-terrestrial networks (https://arxiv.org/html/2502.03637v1,
+https://arxiv.org/pdf/2409.06073, survey https://arxiv.org/pdf/2503.08826). Its extra
+degrees of freedom are exactly what would let one surface serve multiple simultaneous
+links better, so the related-work section should frame our element-partitioned
+arbitration mode (§3.3-3) as the passive-diagonal approximation of what BD-RIS enables,
+and name BD-RIS arbitration as future work. Likewise active/STAR-RIS UAV EE work
+(e.g., https://www.mdpi.com/2504-446X/9/8/520) is thematically adjacent (amplifier power
+enters the EE denominator, as our FL-airtime ablation does) but doubles the modeling
+scope — cited, not implemented. A 2025 review of RIS-UAV system models
+(https://www.sciencedirect.com/science/article/pii/S2405959525001602) anchors the
+related-work matrix required by `02-novelty-and-gap.md` §5.
 
 **Claim of record** (to be finalized after full-text due diligence per `02-novelty-and-gap.md` §5):
 
@@ -393,9 +436,26 @@ rate & association, reward terms (separately!), collision-violation count. Per-e
 EE, throughput, energy, Jain(device bits), min-separation, comm bytes cumulative. Per-run
 manifest: config hash, git commit, seed tree, wall time. Figures generated ONLY from
 saved CSVs (no computation in plot code — retires the v8 pattern of training sub-agents
-inside plotting functions). Standard plots: learning curves with CI bands, trajectory
-maps with blockage overlay, EE-vs-{L, K, I, b, E}, EE-vs-comm frontier, per-device
-fairness bars, FL round dips.
+inside plotting functions).
+
+**Paper figures (ranked by reviewer value):**
+1. *Coverage/SNR heatmap* of the arena with blockage overlay, side-by-side no-RIS vs
+   aligned-RIS — the figure that justifies the RIS's existence and the scenario design.
+2. *RIS beam/phase-pattern snapshots synchronized with UAV positions* at 4–6 mission
+   instants — makes the arbitration behavior (who the surface serves, when it switches)
+   directly visible; no prior RIS-UAV paper found shows arbitration dynamics this way.
+3. *EE-vs-communication Pareto frontier* with per-seed scatter and CI ellipses (the
+   headline plot), zoomed inset on post-aggregation dips.
+4. *Stacked energy-budget bars* (propulsion / receive electronics / FL airtime) per
+   method — ties the FL-cost story to the EE story in one glance.
+5. *Device-fairness map* — device dots colored by delivered bits, per method; plus
+   learning curves with CI bands, trajectory maps over the blockage field, and
+   EE-vs-{L, K, I, b, E} sweeps.
+
+**Repo/defense (not paper):** animated episode (mp4/GIF) of trajectories + active beam +
+association edges; optional interactive Plotly dashboard over the logged CSVs. The
+per-slot logging schema above is deliberately sufficient to build all of these without
+re-running experiments.
 
 ---
 

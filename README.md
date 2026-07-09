@@ -1,5 +1,15 @@
 # RIS-Assisted UAV-Enabled IoT Network — MAPPO Implementation
 
+> **⚠️ Research continuation (July 2026):** this v8 codebase is the archived legacy line.
+> A full audit found correctness defects that invalidate the headline results
+> ([`docs/analysis/01-technical-audit.md`](docs/analysis/01-technical-audit.md)), and a
+> complete redesign has been specified for the next phase (shared-RIS arbitration +
+> Fed-MAPPO at realistic scale). **To implement the new system, start at
+> [`docs/blueprint/IMPLEMENTATION-GUIDE.md`](docs/blueprint/IMPLEMENTATION-GUIDE.md)** —
+> it gives the reading order, ground rules, and milestone gates; the build spec itself is
+> [`docs/blueprint/technical-blueprint.md`](docs/blueprint/technical-blueprint.md).
+> Do not extend the v8 script; do not treat the v8 results below as validated.
+
 > **Reference:** Jiang et al., "RIS-Assisted UAV-Enabled IoT Network,"
 > *IEEE Internet of Things Journal*, Vol. 12, No. 20, October 2025.
 
