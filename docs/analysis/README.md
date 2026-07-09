@@ -18,6 +18,11 @@ a self-contained script included in the audit.
 | [04-experimental-methodology.md](04-experimental-methodology.md) | Baselines, ablations, metrics, statistical protocol, scalability & communication-overhead experiments, reproducibility checklist | 8 |
 | [05-roadmap-and-readiness.md](05-roadmap-and-readiness.md) | Milestone-based implementation roadmap (M0–M5) with validation strategy per milestone; publication-readiness verdict and venue strategy | 9, 10 |
 
+> **Update (July 2026):** after both reference papers ([J] Jiang et al. IoT-J 2025 and
+> [A] Abualhayja'a et al. TechRxiv 2025) were obtained and read in full, a complete
+> implementation-level design document was produced that supersedes `03` where they
+> differ: [`../blueprint/technical-blueprint.md`](../blueprint/technical-blueprint.md).
+
 ## One-paragraph summary
 
 The v8 implementation is a working, end-to-end MAPPO pipeline with disciplined iteration
