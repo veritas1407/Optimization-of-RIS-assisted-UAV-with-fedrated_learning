@@ -1,0 +1,2 @@
+method,n_seeds,ee_mean,ee_std,delivered_frac_mean,delivered_frac_std,shadow_delivered_frac_mean,shadow_delivered_frac_std,energy_mean,energy_std,reached_final_mean,reached_final_std,collisions_mean,collisions_std,comm_MB_mean,comm_MB_std
+ctde,3,5354.269807260166,170.06810017309468,0.677524112002858,0.020848088690675993,0.5532976847318617,0.0359569890984593,59675.86572510819,102.67696870757653,1.0,0.0,1.0166666666666668,1.0143416036468627,275.736,0.0

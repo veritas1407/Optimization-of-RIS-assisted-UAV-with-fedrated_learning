@@ -1,0 +1,22 @@
+{
+  "ee": 5305.197355545204,
+  "bits": 315916289.2736095,
+  "energy": 59562.36030642205,
+  "delivered_frac": 0.6700549541568683,
+  "completed_frac": 0.14375,
+  "shadow_delivered_frac": 0.5562758769497861,
+  "collisions": 0.25,
+  "reached_final": 1.0,
+  "rth_frac": 0.234375,
+  "return": -5.733726962055585,
+  "ee_std": 515.7137709543764,
+  "delivered_frac_std": 0.06795919850643824,
+  "best_episode": 3000,
+  "comm_MB": 275.736,
+  "train_time_s": 601.2160279750824,
+  "algo": "ctde",
+  "seed": 2,
+  "E": 1,
+  "mu": 0.01,
+  "preset": "aerial"
+}
