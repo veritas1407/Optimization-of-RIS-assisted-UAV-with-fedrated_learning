@@ -89,7 +89,22 @@ Figure: `results_v9/fig_ris_value.png`.
 
 ## 5. Sensitivity (trained policies re-used, no retraining)
 
-*Filled in from `results_v9/sweeps/building/` when the sweep run finishes.*
+Because the RIS phases are computed in closed form and the observation has a fixed size,
+the trained policies (MAPPO-CTDE and FedAvg E = 16, 3 seeds each) are evaluated at every
+setting **without retraining** (v8 needed 11 separately trained sub-agents for its sweeps).
+Figure: `results_v9/sweeps/building/fig_sweeps.png`.
+
+| Parameter | Finding (learned MAPPO EE unless noted) |
+|---|---|
+| RIS size L = 64 / 144 / 256 / 400 | 7,681 / 7,900 / 8,049 / 8,285 — steady gain with diminishing returns |
+| Phase bits 1 / 2 / 3 / continuous | 8,002 / 8,049 / 8,141 / 8,120 — **2-bit is within ~1 % of continuous** |
+| Phase error 0 / 10 / 20 / 40° (std) | 8,049 / 8,097 / 8,101 / 7,971 — **robust to imperfect CSI** (−1 % at 40°) |
+| Device power 0 → 20 dBm | 5,261 → 10,431; learned stays 3–6 % above greedy at every power |
+| Data per device ×0.5 / ×1 / ×1.5 / ×2 | learned − greedy gap grows with scarcity: +1.8 % / +4.2 % / +6.1 % / +3.9 % |
+| RIS mode: time-share vs common | 8,049 vs 8,110 — equal at this load (one device per UAV per slot) |
+
+The "no RIS" and "random phases" entries of that last panel use policies trained *with* the
+RIS (out of distribution); the properly trained no-RIS policy is in §4 (7,441).
 
 ## 6. What was fixed relative to v8
 
