@@ -112,6 +112,75 @@ def exp_multiarea(args):
     train_multiarea(mc, out)
 
 
+def load_policy(preset: str, tag: str, seed: int, cfg=None):
+    """Deterministic policy callable from a saved single-area checkpoint."""
+    import torch
+
+    from .env import RISUAVEnv
+    from .trainers import Learner, TrainConfig
+
+    algo = tag.split("_")[0]
+    cfg = cfg or get_preset(preset)
+    learner = Learner(RISUAVEnv(cfg), TrainConfig(algo=algo))
+    learner.load_state_dict(torch.load(RESULTS / "train" / preset / tag / f"seed{seed}" / "best.pt"))
+    return learner.policy
+
+
+SWEEPS = {
+    # name: (values, function value -> scenario overrides)
+    "ris_size": ([64, 144, 256, 400], lambda v: {"ris": ("ny", "nz", int(np.sqrt(v)))}),
+    "phase_bits": ([1, 2, 3, 0], lambda v: {"ris": ("bits", v)}),
+    "phase_err_deg": ([0, 10, 20, 40], lambda v: {"ris": ("phase_err_deg", v)}),
+    "p_tx_dbm": ([0, 5, 10, 15, 20], lambda v: {"p_tx_dbm": float(v)}),
+    "data_scale": ([0.5, 1.0, 1.5, 2.0], lambda v: {"data_mbit": (10.0 * v, 30.0 * v)}),
+    "arbitration": (["none", "random", "common", "timeshare"], lambda v: {"arbitration": v}),
+}
+
+
+def _apply(cfg, ov: dict):
+    for k, v in ov.items():
+        if k == "ris":
+            if v[0] == "ny":
+                cfg = replace(cfg, ris=replace(cfg.ris, ny=v[2], nz=v[2]))
+            else:
+                cfg = replace(cfg, ris=replace(cfg.ris, **{v[0]: v[1]}))
+        else:
+            cfg = replace(cfg, **{k: v})
+    return cfg
+
+
+def exp_sweep(args):
+    """Evaluate trained policies (no retraining) and the greedy heuristic across one parameter."""
+    from .baselines import greedy_policy, run_episode, straight_policy
+    from .env import RISUAVEnv
+
+    names = list(SWEEPS) if args.sweep == "all" else [args.sweep]
+    tags = args.tags.split(",")
+    seeds = [int(s) for s in args.seeds.split(",")]
+    for name in names:
+        values, fn = SWEEPS[name]
+        rows = []
+        for v in values:
+            cfg = _apply(get_preset(args.preset), fn(v))
+            pols = {"greedy": greedy_policy, "straight": straight_policy}
+            for tag in tags:
+                for s in seeds:
+                    if (RESULTS / "train" / args.preset / tag / f"seed{s}" / "best.pt").exists():
+                        pols[f"{tag}/seed{s}"] = load_policy(args.preset, tag, s, cfg)
+            for pname, pol in pols.items():
+                env = RISUAVEnv(cfg)
+                ms = [run_episode(env, pol, 1_000_000 + j) for j in range(args.n_eval)]
+                rows.append({"param": name, "value": v, "policy": pname.split("/")[0],
+                             "seed": pname.split("seed")[-1] if "/" in pname else "",
+                             "ee": float(np.mean([m["ee"] for m in ms])),
+                             "delivered_frac": float(np.mean([m["delivered_frac"] for m in ms])),
+                             "shadow_delivered_frac": float(np.mean([m["shadow_delivered_frac"] for m in ms]))})
+            summary = {p: np.mean([r["ee"] for r in rows if r["value"] == v and r["policy"] == p])
+                       for p in dict.fromkeys(r["policy"] for r in rows if r["value"] == v)}
+            print(f"  {name}={v}: " + "  ".join(f"{p} {e:.0f}" for p, e in summary.items()), flush=True)
+        _write_csv(RESULTS / "sweeps" / args.preset / f"{name}.csv", rows)
+
+
 def exp_multiarea_baselines(args):
     from .config import TEST_AREAS, random_area
 
@@ -131,7 +200,7 @@ def exp_multiarea_baselines(args):
 
 def main(argv=None):
     p = argparse.ArgumentParser()
-    p.add_argument("--exp", required=True, choices=["gate", "train", "multiarea", "multiarea_baselines"])
+    p.add_argument("--exp", required=True, choices=["gate", "train", "multiarea", "multiarea_baselines", "sweep"])
     p.add_argument("--mode", default="fedavg", choices=["local", "fedavg", "pooled"])
     p.add_argument("--fed-parts", default="actor", choices=["actor", "both"])
     p.add_argument("--n-eval", type=int, default=20)
@@ -147,10 +216,13 @@ def main(argv=None):
     p.add_argument("--ppo", default="", help="JSON dict of PPOConfig overrides")
     p.add_argument("--tag", default="")
     p.add_argument("--skip-existing", action="store_true")
+    p.add_argument("--sweep", default="all")
+    p.add_argument("--tags", default="ctde,ippo,fedavg_E4")
+    p.add_argument("--seeds", default="0,1,2")
     args = p.parse_args(argv)
     t = time.time()
     {"gate": exp_gate, "train": exp_train, "multiarea": exp_multiarea,
-     "multiarea_baselines": exp_multiarea_baselines}[args.exp](args)
+     "multiarea_baselines": exp_multiarea_baselines, "sweep": exp_sweep}[args.exp](args)
     print(f"done in {time.time() - t:.1f}s")
 
 

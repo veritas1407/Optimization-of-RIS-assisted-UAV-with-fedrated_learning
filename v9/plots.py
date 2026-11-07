@@ -213,8 +213,161 @@ def plot_train(preset="building"):
               f"comm {r['comm_MB_mean']:8.1f} MB")
 
 
+MA_LABELS = {"local": "Local only\n(each area alone)", "fedavg_E4": "FedAvg across areas\n(actor only, E=4)",
+             "fedavg_E4_both": "FedAvg across areas\n(actor+critic, E=4)",
+             "pooled": "Pooled raw data\n(cloud, upper bound)"}
+
+
+def plot_area_maps():
+    from .config import TEST_AREAS, TRAIN_AREAS, random_area
+    out = RESULTS / "multiarea"
+    out.mkdir(parents=True, exist_ok=True)
+    seeds = list(TRAIN_AREAS) + list(TEST_AREAS)
+    fig, axes = plt.subplots(2, 6, figsize=(18, 6.4))
+    for ax, s in zip(axes.ravel(), seeds):
+        cfg = random_area(s)
+        draw_scene(ax, cfg)
+        x0, y0, x1, y1 = cfg.shadow_region
+        ax.add_patch(Rectangle((x0, y0), x1 - x0, y1 - y0, color="red", alpha=0.35, zorder=4))
+        ax.plot([0, cfg.area], [0, cfg.area], "k:", lw=0.8)
+        kind = "TRAIN" if s in TRAIN_AREAS else "TEST (unseen)"
+        ax.set_title(f"{kind} area {s}", fontsize=9, color="C0" if s in TRAIN_AREAS else "C3")
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+        ax.tick_params(labelsize=7)
+    fig.suptitle("City areas: grey = buildings, red = shadowed courtyard, star = RIS, dotted = start→final diagonal")
+    fig.tight_layout()
+    fig.savefig(out / "fig_areas.png", dpi=140, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_multiarea():
+    import json
+    root = RESULTS / "multiarea"
+    runs = {}
+    for d in sorted(root.iterdir()) if root.exists() else []:
+        if d.is_dir():
+            seeds = [s for s in sorted(d.glob("seed*")) if (s / "test.json").exists()]
+            if seeds:
+                runs[d.name] = seeds
+    if not runs:
+        print("no finished multi-area runs")
+        return
+    order = [k for k in ("local", "fedavg_E4", "fedavg_E4_both", "pooled") if k in runs] + \
+            [k for k in runs if k not in MA_LABELS]
+    rows = []
+    for tag in order:
+        ts = [json.loads((s / "test.json").read_text()) for s in runs[tag]]
+        ee = np.array([t["test_ee"] for t in ts])
+        rows.append({"method": tag, "n_seeds": len(ts), "test_ee_mean": ee.mean(), "test_ee_std": ee.std(),
+                     "test_delivered_mean": np.mean([t["test_delivered"] for t in ts]),
+                     "test_reached_mean": np.mean([t["test_reached"] for t in ts]),
+                     "comm_MB_mean": np.mean([t["comm_MB"] for t in ts]),
+                     "own_area_ee_mean": (np.mean([np.mean([m.get("own_area_ee", np.nan)
+                                                            for m in t["models"].values()]) for t in ts])
+                                          if tag == "local" else np.nan)})
+    with (root / "summary.csv").open("w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=list(rows[0]))
+        w.writeheader()
+        w.writerows(rows)
+    base = {}
+    if (root / "baselines.csv").exists():
+        for r in _read_csv(root / "baselines.csv"):
+            base[(r["policy"], r["arbitration"])] = float(r["test_ee"])
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    x = np.arange(len(rows))
+    bars = ax.bar(x, [r["test_ee_mean"] for r in rows], yerr=[r["test_ee_std"] for r in rows], capsize=5,
+                  color=["C7" if r["method"] == "local" else "C2" if r["method"].startswith("fed") else "C0"
+                         for r in rows])
+    for b, r in zip(bars, rows):
+        ax.annotate(f"{r['test_ee_mean']:.0f}\ncomm {r['comm_MB_mean']:.0f} MB", (b.get_x() + b.get_width() / 2,
+                    b.get_height()), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=8)
+    names = {("greedy", "timeshare"): "greedy + RIS", ("straight", "timeshare"): "straight + RIS",
+             ("greedy", "none"): "greedy, no RIS"}
+    for (k, v), ls in zip([(k, base[k]) for k in names if k in base], ["--", ":", "-."]):
+        ax.axhline(v, color="k", ls=ls, lw=1, label=f"heuristic: {names[k]}")
+    ax.set_xticks(x)
+    ax.set_xticklabels([MA_LABELS.get(r["method"], r["method"]) for r in rows], fontsize=9)
+    ax.set_ylabel("EE on 8 never-seen city areas (bit/J)")
+    lo = min([r["test_ee_mean"] for r in rows] + list(base.values()) or [0])
+    ax.set_ylim(lo * 0.85, None)
+    ax.set_title("Generalization to unseen city areas (mean ± std over training seeds)")
+    ax.legend(fontsize=8, loc="lower right")
+    fig.savefig(root / "fig_generalization.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for tag in order:
+        logs = [_read_csv(s / "eval_log.csv") for s in runs[tag]]
+        n = min(len(lg) for lg in logs)
+        xs = np.array([float(r["episodes_per_area"]) for r in logs[0][:n]])
+        ys = np.array([[float(r["val_ee_mean"]) for r in lg[:n]] for lg in logs])
+        ax.plot(xs, ys.mean(0), lw=2, label=MA_LABELS.get(tag, tag).replace("\n", " "))
+        ax.fill_between(xs, ys.mean(0) - ys.std(0), ys.mean(0) + ys.std(0), alpha=0.2)
+    ax.set_xlabel("training episodes per area")
+    ax.set_ylabel("EE on unseen validation areas (bit/J)")
+    ax.set_title("Learning curves, judged on areas never seen in training")
+    ax.legend(fontsize=8)
+    fig.savefig(root / "fig_multiarea_curves.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    for r in rows:
+        own = f"  own-area {r['own_area_ee_mean']:.0f}" if not np.isnan(r["own_area_ee_mean"]) else ""
+        print(f"  {r['method']:16s} seeds={r['n_seeds']}  unseen-area EE {r['test_ee_mean']:7.0f} ± "
+              f"{r['test_ee_std']:5.0f}  cross-area comm {r['comm_MB_mean']:7.1f} MB{own}")
+
+
+SWEEP_TITLES = {"ris_size": "RIS elements L", "phase_bits": "RIS phase bits (0 = continuous)",
+                "phase_err_deg": "random phase error (deg, std)", "p_tx_dbm": "device transmit power (dBm)",
+                "data_scale": "data per device (× 10–30 Mbit)", "arbitration": "RIS setting"}
+
+
+def plot_sweeps(preset="building"):
+    root = RESULTS / "sweeps" / preset
+    files = sorted(root.glob("*.csv")) if root.exists() else []
+    if not files:
+        print("no sweeps")
+        return
+    fig, axes = plt.subplots(2, 3, figsize=(16, 8.5))
+    for ax, f in zip(axes.ravel(), files):
+        rows = _read_csv(f)
+        name = rows[0]["param"]
+        vals = list(dict.fromkeys(r["value"] for r in rows))
+        cat = name == "arbitration"
+        x = np.arange(len(vals)) if cat or name == "phase_bits" else np.array([float(v) for v in vals])
+        for i, pol in enumerate(dict.fromkeys(r["policy"] for r in rows)):
+            ys = [[float(r["ee"]) for r in rows if r["value"] == v and r["policy"] == pol] for v in vals]
+            mu = np.array([np.mean(y) for y in ys])
+            sd = np.array([np.std(y) for y in ys])
+            lab = LABELS.get(pol, pol)
+            if cat:
+                w = 0.8 / 5
+                ax.bar(x + (i - 1.5) * w, mu, w, yerr=sd, capsize=2, label=lab)
+            else:
+                ax.errorbar(x, mu, yerr=sd, marker="o", capsize=3, label=lab)
+        if cat or name == "phase_bits":
+            ax.set_xticks(x)
+            ax.set_xticklabels(["∞" if (name == "phase_bits" and v == "0") else v for v in vals])
+        ax.set_xlabel(SWEEP_TITLES.get(name, name))
+        ax.set_ylabel("EE (bit/J)")
+        ax.set_title(SWEEP_TITLES.get(name, name))
+        ax.legend(fontsize=7)
+    for ax in axes.ravel()[len(files):]:
+        ax.axis("off")
+    fig.suptitle("Sensitivity of trained policies (no retraining) and heuristics; 20 test episodes per point")
+    fig.tight_layout()
+    fig.savefig(root / "fig_sweeps.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print("sweep figure written to", root)
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1]
+    if cmd == "sweeps":
+        plot_sweeps(sys.argv[2] if len(sys.argv) > 2 else "building")
+    if cmd == "multiarea":
+        plot_area_maps()
+        plot_multiarea()
     if cmd == "gate":
         plot_gate()
     elif cmd == "train":
