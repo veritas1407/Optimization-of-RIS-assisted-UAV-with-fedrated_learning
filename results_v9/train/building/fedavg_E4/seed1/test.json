@@ -1,0 +1,22 @@
+{
+  "ee": 7687.5588397564425,
+  "bits": 333199971.0743238,
+  "energy": 43335.75508794758,
+  "delivered_frac": 0.7067638273285275,
+  "completed_frac": 0.12083333333333332,
+  "shadow_delivered_frac": 0.702919388030111,
+  "collisions": 0.0,
+  "reached_final": 1.0,
+  "rth_frac": 0.21750000000000003,
+  "return": 12.907205916947373,
+  "ee_std": 698.5807629686274,
+  "delivered_frac_std": 0.07028617071345011,
+  "best_episode": 1500,
+  "comm_MB": 108.861336,
+  "train_time_s": 427.7946298122406,
+  "algo": "fedavg",
+  "seed": 1,
+  "E": 4,
+  "mu": 0.01,
+  "preset": "building"
+}
