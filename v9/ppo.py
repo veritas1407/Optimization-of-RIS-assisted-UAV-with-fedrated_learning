@@ -149,9 +149,9 @@ def ppo_update(actor: Actor, critic: Critic, opt_a, opt_c, batch: dict, pc: PPOC
             loss_c = pc.vf_coef * v_loss
             if prox is not None and mu > 0.0:
                 loss_a = loss_a + 0.5 * mu * sum(((p - prox["actor." + k]) ** 2).sum()
-                                                 for k, p in actor.named_parameters())
+                                                 for k, p in actor.named_parameters() if "actor." + k in prox)
                 loss_c = loss_c + 0.5 * mu * sum(((p - prox["critic." + k]) ** 2).sum()
-                                                 for k, p in critic.named_parameters())
+                                                 for k, p in critic.named_parameters() if "critic." + k in prox)
             opt_a.zero_grad()
             opt_c.zero_grad()
             (loss_a + loss_c if update_critic else loss_a).backward()

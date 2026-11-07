@@ -52,6 +52,24 @@ def test_fedavg_averages_and_meters_bytes():
     assert lr.comm_bytes == 2 * per * len(lr.clients)
 
 
+def test_fedper_keeps_heads_local_and_averages_trunk():
+    env = RISUAVEnv(get_preset("building"))
+    lr = Learner(env, TrainConfig(algo="fedper"))
+    with torch.no_grad():
+        for a, actor in lr.actors.items():
+            for p in actor.parameters():
+                p.fill_(float(a))
+    lr.aggregate()
+    expected = np.mean(lr.clients)
+    for a in lr.clients:
+        sd = lr.actors[a].state_dict()
+        assert torch.allclose(sd["mu.0.weight"], torch.full_like(sd["mu.0.weight"], expected))
+        assert torch.allclose(sd["mu.4.weight"], torch.full_like(sd["mu.4.weight"], float(a)))
+        assert torch.allclose(sd["log_std"], torch.full_like(sd["log_std"], float(a)))
+    full = (n_params(lr.actors[0]) + n_params(lr.critics[0])) * 4.0
+    assert 0 < lr.comm_bytes < 2 * full * len(lr.clients)
+
+
 def test_aerial_ris_agent_not_averaged_with_collectors():
     env = RISUAVEnv(get_preset("aerial"))
     lr = Learner(env, TrainConfig(algo="fedavg"))

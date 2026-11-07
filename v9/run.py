@@ -98,7 +98,7 @@ def main(argv=None):
     p.add_argument("--exp", required=True, choices=["gate", "train"])
     p.add_argument("--n-eval", type=int, default=20)
     p.add_argument("--preset", default="building")
-    p.add_argument("--algo", default="ctde", choices=["ctde", "ippo", "fedavg", "fedprox"])
+    p.add_argument("--algo", default="ctde", choices=["ctde", "ippo", "fedavg", "fedprox", "fedper"])
     p.add_argument("--episodes", type=int, default=2000)
     p.add_argument("--E", type=int, default=1)
     p.add_argument("--mu", type=float, default=0.01)

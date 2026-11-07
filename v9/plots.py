@@ -114,7 +114,8 @@ def plot_gate():
 
 LABELS = {"ctde": "MAPPO-CTDE (centralized)", "ippo": "IPPO (no exchange)",
           "fedavg_E1": "FedAvg (E=1)", "fedavg_E4": "FedAvg (E=4)", "fedavg_E16": "FedAvg (E=16)",
-          "fedprox_E4": "FedProx (E=4, μ=0.01)", "fedprox_E1": "FedProx (E=1)"}
+          "fedprox_E4": "FedProx (E=4, μ=0.01)", "fedprox_E1": "FedProx (E=1)",
+          "fedper_E4": "FedPer (E=4, personal heads)"}
 
 
 def _runs(preset):

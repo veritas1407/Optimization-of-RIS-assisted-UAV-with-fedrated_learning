@@ -118,15 +118,26 @@ class Learner:
         w.update({"critic." + k: v.detach().clone() for k, v in self.critics[a].state_dict().items()})
         return w
 
+    @staticmethod
+    def _is_head(key: str) -> bool:
+        """Output layers kept local by personalized FL (FedPer): actor mean head, log-std, value head."""
+        return key.startswith(("actor.mu.4.", "actor.log_std", "critic.v.4."))
+
     def aggregate(self):
-        """FedAvg over the collector clients (equal sample counts -> equal weights)."""
+        """FedAvg over the collector clients (equal sample counts -> equal weights).
+
+        fedper averages only the shared hidden layers; each client keeps its own output heads.
+        """
         ws = [self._client_weights(a) for a in self.clients]
-        avg = {k: torch.stack([w[k] for w in ws]).mean(0) for k in ws[0]}
+        keys = [k for k in ws[0] if not (self.tc.algo == "fedper" and self._is_head(k))]
+        avg = {k: torch.stack([w[k] for w in ws]).mean(0) for k in keys}
         for a in self.clients:
-            self.actors[a].load_state_dict({k[6:]: v for k, v in avg.items() if k.startswith("actor.")})
-            self.critics[a].load_state_dict({k[7:]: v for k, v in avg.items() if k.startswith("critic.")})
+            self.actors[a].load_state_dict({k[6:]: v for k, v in avg.items() if k.startswith("actor.")},
+                                           strict=False)
+            self.critics[a].load_state_dict({k[7:]: v for k, v in avg.items() if k.startswith("critic.")},
+                                            strict=False)
         self.global_w = avg
-        per_client = (n_params(self.actors[self.clients[0]]) + n_params(self.critics[self.clients[0]])) * 4.0
+        per_client = sum(v.numel() for v in avg.values()) * 4.0
         self.comm_bytes += 2.0 * per_client * len(self.clients)     # upload + download
 
     # ---------------------------------------------------------------- update
@@ -173,7 +184,7 @@ class Learner:
                 stats[f"agent{a}"] = ppo_update(self.actors[a], self.critics[a], self.opt_a[a], self.opt_c[a],
                                                 b, pc, prox=prox if use_prox else None, mu=tc.mu)
         self.n_updates += 1
-        if tc.algo in ("fedavg", "fedprox") and self.n_updates % tc.E == 0:
+        if tc.algo in ("fedavg", "fedprox", "fedper") and self.n_updates % tc.E == 0:
             self.aggregate()
         return stats
 

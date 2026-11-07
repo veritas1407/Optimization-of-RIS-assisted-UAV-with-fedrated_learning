@@ -18,6 +18,7 @@ for s in $SEEDS; do
   jobs+=("--algo fedavg --E 4 --seed $s")
   jobs+=("--algo fedavg --E 16 --seed $s")
   jobs+=("--algo fedprox --E 4 --mu 0.01 --seed $s")
+  jobs+=("--algo fedper --E 4 --seed $s")
 done
 
 printf '%s\n' "${jobs[@]}" | xargs -P "$N_PAR" -I{} bash -c \
