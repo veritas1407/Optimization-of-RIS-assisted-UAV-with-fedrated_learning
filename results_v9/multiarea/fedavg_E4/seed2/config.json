@@ -1,0 +1,45 @@
+{
+  "mode": "fedavg",
+  "episodes_per_area": 2500,
+  "E": 4,
+  "fed_parts": "actor",
+  "seed": 2,
+  "eval_every": 250,
+  "n_val_eps": 3,
+  "n_test_eps": 5,
+  "train_areas": [
+    1,
+    2,
+    9,
+    5
+  ],
+  "val_areas": [
+    105,
+    101,
+    102,
+    103
+  ],
+  "test_areas": [
+    227,
+    237,
+    204,
+    206,
+    201,
+    211,
+    203,
+    207
+  ],
+  "ppo": {
+    "gamma": 0.99,
+    "lam": 0.95,
+    "clip": 0.2,
+    "epochs": 5,
+    "minibatch": 256,
+    "lr_actor": 0.0003,
+    "lr_critic": 0.001,
+    "ent_coef": 0.003,
+    "vf_coef": 0.5,
+    "max_grad": 0.5,
+    "episodes_per_update": 8
+  }
+}
