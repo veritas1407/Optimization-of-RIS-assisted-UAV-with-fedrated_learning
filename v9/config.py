@@ -150,7 +150,9 @@ def building() -> ScenarioConfig:
 def aerial() -> ScenarioConfig:
     return ScenarioConfig(
         name="aerial",
-        ris=RISConfig(kind="aerial", center=(40.0, 60.0, 100.0), normal=(0.0, 0.0, -1.0)),
+        # 70 m: lowest altitude that keeps the downward-facing panel above the 60 m collectors;
+        # static analysis showed lower carrier altitude gives the strongest cascaded link
+        ris=RISConfig(kind="aerial", center=(40.0, 60.0, 70.0), normal=(0.0, 0.0, -1.0)),
     )
 
 
@@ -243,7 +245,13 @@ VAL_AREAS = (105, 101, 102, 103)               # NW-x, NW-y, SE-x, SE-y
 TEST_AREAS = (227, 237, 204, 206, 201, 211, 203, 207)   # 2 of each type
 
 
-PRESETS = {"building": building, "aerial": aerial, "legacy_small": legacy_small}
+def building_noris() -> ScenarioConfig:
+    """Same urban scene with the RIS switched off (isolates the RIS gain for learned flight)."""
+    return ScenarioConfig(name="building_noris", arbitration="none")
+
+
+PRESETS = {"building": building, "building_noris": building_noris, "aerial": aerial,
+           "legacy_small": legacy_small}
 
 
 def get_preset(name: str, **overrides) -> ScenarioConfig:

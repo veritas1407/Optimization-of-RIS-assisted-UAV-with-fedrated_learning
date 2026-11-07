@@ -4,7 +4,7 @@
 #   PRESET=aerial SEEDS="0 1" bash v9/run_campaign.sh
 set -euo pipefail
 PRESET=${PRESET:-building}
-SEEDS=${SEEDS:-"0 1 2"}
+SEEDS=${SEEDS-"0 1 2"}
 EPISODES=${EPISODES:-3000}
 N_PAR=${N_PAR:-4}
 LOGDIR=${LOGDIR:-results_v9/logs/$PRESET}
@@ -21,6 +21,7 @@ for s in $SEEDS; do
   jobs+=("--algo fedper --E 4 --seed $s")
 done
 
+[ ${#jobs[@]} -eq 0 ] && { echo "no jobs"; exit 0; }
 printf '%s\n' "${jobs[@]}" | xargs -P "$N_PAR" -I{} bash -c \
   'args="{}"; name=$(echo "$args" | tr -d "-" | tr " " "_"); \
    python3 -m v9.run --exp train --skip-existing --preset '"$PRESET"' --episodes '"$EPISODES"' $args \
