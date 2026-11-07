@@ -1,0 +1,146 @@
+{
+  "scenario": {
+    "name": "building",
+    "area": 500.0,
+    "M": 40,
+    "dt": 2.5,
+    "K": 3,
+    "uav_alt": 60.0,
+    "v_max": 20.0,
+    "a_max": 5.0,
+    "d_min": 20.0,
+    "start_xy": [
+      20.0,
+      20.0
+    ],
+    "start_spacing": 25.0,
+    "final_xy": [
+      480.0,
+      480.0
+    ],
+    "r_final": 40.0,
+    "buildings": [
+      {
+        "x0": 300.0,
+        "y0": 60.0,
+        "x1": 440.0,
+        "y1": 95.0,
+        "h": 45.0
+      },
+      {
+        "x0": 300.0,
+        "y0": 125.0,
+        "x1": 440.0,
+        "y1": 160.0,
+        "h": 45.0
+      },
+      {
+        "x0": 280.0,
+        "y0": 60.0,
+        "x1": 300.0,
+        "y1": 160.0,
+        "h": 40.0
+      },
+      {
+        "x0": 440.0,
+        "y0": 60.0,
+        "x1": 460.0,
+        "y1": 160.0,
+        "h": 40.0
+      }
+    ],
+    "n_open": 18,
+    "n_shadow": 6,
+    "shadow_region": [
+      310.0,
+      100.0,
+      430.0,
+      120.0
+    ],
+    "fixed_devices": [],
+    "data_mbit": [
+      10.0,
+      30.0
+    ],
+    "window_s": 30.0,
+    "always_on": false,
+    "fc": 2400000000.0,
+    "p_tx_dbm": 10.0,
+    "bw_hz": 180000.0,
+    "n0_dbm_hz": -174.0,
+    "nf_db": 7.0,
+    "n_sub": 1,
+    "clutter": "alhourani",
+    "alh_a": 9.61,
+    "alh_b": 0.16,
+    "eta_los_db": 1.0,
+    "eta_nlos_db": 20.0,
+    "building_loss_db": 20.0,
+    "kappa_direct_db": 5.0,
+    "exp_direct_fixed": 3.5,
+    "ris": {
+      "kind": "building",
+      "center": [
+        370.0,
+        95.5,
+        48.0
+      ],
+      "normal": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "ny": 16,
+      "nz": 16,
+      "spacing_wl": 0.5,
+      "bits": 2,
+      "kappa_db": 10.0,
+      "exp": 2.0,
+      "payload_factor": 1.2,
+      "phase_err_deg": 0.0
+    },
+    "arbitration": "timeshare",
+    "P_B": 79.8563,
+    "P_I": 88.6279,
+    "U_tip": 120.0,
+    "v0": 4.03,
+    "d0": 0.6,
+    "rho": 1.225,
+    "s": 0.05,
+    "A": 0.503,
+    "agent_id_obs": true,
+    "rth_shield": true,
+    "rth_frac": 0.9,
+    "lam_init": 6000.0,
+    "w_final": 5.0,
+    "w_collision": 1.0,
+    "final_slack": 0.8
+  },
+  "train": {
+    "algo": "fedavg",
+    "episodes": 3000,
+    "E": 16,
+    "mu": 0.01,
+    "seed": 2,
+    "eval_every": 100,
+    "n_val": 10,
+    "n_test": 20,
+    "hidden": 128,
+    "critic_hidden_ctde": 256,
+    "lam_update": false,
+    "lam_rate": 0.3,
+    "ppo": {
+      "gamma": 0.99,
+      "lam": 0.95,
+      "clip": 0.2,
+      "epochs": 5,
+      "minibatch": 256,
+      "lr_actor": 0.0003,
+      "lr_critic": 0.001,
+      "ent_coef": 0.003,
+      "vf_coef": 0.5,
+      "max_grad": 0.5,
+      "episodes_per_update": 8
+    }
+  }
+}
