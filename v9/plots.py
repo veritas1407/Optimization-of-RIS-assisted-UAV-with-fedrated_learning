@@ -339,7 +339,8 @@ def plot_ris_value():
              ("Aerial RIS\n(carried by a 4th UAV)", heur("aerial", "timeshare"), learned("aerial"))]
     fig, ax = plt.subplots(figsize=(9, 5))
     w = 0.38
-    for j, (lab, col) in enumerate((("greedy heuristic", "C7"), ("learned MAPPO (3 seeds)", "C0"))):
+    for j, (lab, col) in enumerate((("greedy heuristic (± std over 20 test episodes)", "C7"),
+                                    ("learned MAPPO (± std over 3 training seeds)", "C0"))):
         for i, (_, h, l) in enumerate(cases):
             v = h if j == 0 else l
             if v is None:
