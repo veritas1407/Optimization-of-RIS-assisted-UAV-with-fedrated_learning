@@ -204,7 +204,7 @@ def plot_train(preset="building"):
     ax.set_xlabel("training communication (MB, log scale; IPPO plotted at 0.1)")
     ax.set_ylabel("test EE (bit/J)")
     ax.set_title("Energy efficiency vs. communication cost of training")
-    ax.legend(fontsize=8)
+    ax.legend(fontsize=8, loc="center left", bbox_to_anchor=(1.01, 0.5))
     fig.savefig(out / "fig_ee_vs_comm.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     for r in rows:
