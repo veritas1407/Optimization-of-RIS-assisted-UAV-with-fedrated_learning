@@ -282,7 +282,8 @@ def plot_multiarea():
                          for r in rows])
     for b, r in zip(bars, rows):
         ax.annotate(f"{r['test_ee_mean']:.0f}\ncomm {r['comm_MB_mean']:.0f} MB", (b.get_x() + b.get_width() / 2,
-                    b.get_height()), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=8)
+                    b.get_height() + r["test_ee_std"]), textcoords="offset points", xytext=(0, 4),
+                    ha="center", va="bottom", fontsize=8)
     names = {("greedy", "timeshare"): "greedy + RIS", ("straight", "timeshare"): "straight + RIS",
              ("greedy", "none"): "greedy, no RIS"}
     for (k, v), ls in zip([(k, base[k]) for k in names if k in base], ["--", ":", "-."]):

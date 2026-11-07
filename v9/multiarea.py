@@ -38,7 +38,7 @@ class MultiAreaConfig:
     E: int = 4
     fed_parts: str = "actor"             # fedavg: "actor" (critics stay at each GCS) | "both"
     seed: int = 0
-    eval_every: int = 250                # in per-area episodes
+    eval_every: int = 200                # in per-area episodes (multiple of episodes_per_update)
     n_val_eps: int = 3                   # episodes per validation area
     n_test_eps: int = 5                  # episodes per test area
     train_areas: tuple = TRAIN_AREAS
