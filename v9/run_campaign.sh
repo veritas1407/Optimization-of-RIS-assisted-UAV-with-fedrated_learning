@@ -23,7 +23,7 @@ done
 
 printf '%s\n' "${jobs[@]}" | xargs -P "$N_PAR" -I{} bash -c \
   'args="{}"; name=$(echo "$args" | tr -d "-" | tr " " "_"); \
-   python3 -m v9.run --exp train --preset '"$PRESET"' --episodes '"$EPISODES"' $args \
-     > '"$LOGDIR"'/$name.log 2>&1 && grep TEST '"$LOGDIR"'/$name.log'
+   python3 -m v9.run --exp train --skip-existing --preset '"$PRESET"' --episodes '"$EPISODES"' $args \
+     > '"$LOGDIR"'/$name.log 2>&1; grep -E "TEST|skipping|Error" '"$LOGDIR"'/$name.log'
 
 python3 -m v9.plots train "$PRESET"

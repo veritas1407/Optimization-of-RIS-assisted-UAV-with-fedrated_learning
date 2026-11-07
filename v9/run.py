@@ -90,6 +90,9 @@ def exp_train(args):
                      ppo=PPOConfig(**(json.loads(args.ppo) if args.ppo else {})))
     tag = args.tag or (f"{args.algo}" + (f"_E{args.E}" if args.algo.startswith("fed") else ""))
     out = RESULTS / "train" / args.preset / tag / f"seed{args.seed}"
+    if args.skip_existing and (out / "test.json").exists():
+        print(f"  [{tag} s{args.seed}] already done, skipping")
+        return
     train(cfg, tc, out)
 
 
@@ -108,6 +111,7 @@ def main(argv=None):
     p.add_argument("--scenario", default="", help="JSON dict of ScenarioConfig overrides")
     p.add_argument("--ppo", default="", help="JSON dict of PPOConfig overrides")
     p.add_argument("--tag", default="")
+    p.add_argument("--skip-existing", action="store_true")
     args = p.parse_args(argv)
     t = time.time()
     {"gate": exp_gate, "train": exp_train}[args.exp](args)
