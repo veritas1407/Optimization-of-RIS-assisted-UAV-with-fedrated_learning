@@ -318,6 +318,50 @@ def plot_multiarea():
               f"{r['test_ee_std']:5.0f}  cross-area comm {r['comm_MB_mean']:7.1f} MB{own}")
 
 
+def plot_ris_value():
+    """No RIS vs building RIS vs aerial RIS, for the greedy heuristic and learned MAPPO."""
+    import json
+    gate = _read_csv(RESULTS / "gate" / "baselines.csv") if (RESULTS / "gate" / "baselines.csv").exists() else []
+
+    def heur(preset, arb):
+        r = [x for x in gate if x["preset"] == preset and x["policy"] == "greedy" and x["arbitration"] == arb]
+        return (float(r[0]["ee_mean"]), float(r[0]["ee_std"]), float(r[0]["energy_mean"])) if r else None
+
+    def learned(preset):
+        ts = [json.loads(p.read_text()) for p in sorted((RESULTS / "train" / preset / "ctde").glob("seed*/test.json"))]
+        if not ts:
+            return None
+        ee = [t["ee"] for t in ts]
+        return float(np.mean(ee)), float(np.std(ee)), float(np.mean([t["energy"] for t in ts])), len(ts)
+
+    cases = [("No RIS", heur("building", "none"), learned("building_noris")),
+             ("Building RIS\n(1 m², rooftop)", heur("building", "timeshare"), learned("building")),
+             ("Aerial RIS\n(carried by a 4th UAV)", heur("aerial", "timeshare"), learned("aerial"))]
+    fig, ax = plt.subplots(figsize=(9, 5))
+    w = 0.38
+    for j, (lab, col) in enumerate((("greedy heuristic", "C7"), ("learned MAPPO (3 seeds)", "C0"))):
+        for i, (_, h, l) in enumerate(cases):
+            v = h if j == 0 else l
+            if v is None:
+                continue
+            b = ax.bar(i + (j - 0.5) * w, v[0], w, yerr=v[1], capsize=4, color=col,
+                       label=lab if i == 0 else None)
+            ax.annotate(f"{v[0]:.0f}\n{v[2] / 1e3:.0f} kJ", (b[0].get_x() + w / 2, v[0] + v[1]),
+                        textcoords="offset points", xytext=(0, 3), ha="center", va="bottom", fontsize=8)
+    ax.set_xticks(range(len(cases)))
+    ax.set_xticklabels([c[0] for c in cases])
+    ax.set_ylabel("EE (bit/J)  [label: EE, total flight energy]")
+    ax.set_title("Where should the RIS be? (aerial carrier's propulsion energy is charged)")
+    ax.set_ylim(3000, None)
+    ax.legend(fontsize=9)
+    out = RESULTS / "fig_ris_value.png"
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    for name, h, l in cases:
+        print(f"  {name.splitlines()[0]:14s} heuristic {h[0] if h else float('nan'):7.0f}   "
+              f"learned {l[0] if l else float('nan'):7.0f}")
+
+
 SWEEP_TITLES = {"ris_size": "RIS elements L", "phase_bits": "RIS phase bits (0 = continuous)",
                 "phase_err_deg": "random phase error (deg, std)", "p_tx_dbm": "device transmit power (dBm)",
                 "data_scale": "data per device (× 10–30 Mbit)", "arbitration": "RIS setting"}
@@ -364,6 +408,8 @@ def plot_sweeps(preset="building"):
 
 if __name__ == "__main__":
     cmd = sys.argv[1]
+    if cmd == "ris_value":
+        plot_ris_value()
     if cmd == "sweeps":
         plot_sweeps(sys.argv[2] if len(sys.argv) > 2 else "building")
     if cmd == "multiarea":
