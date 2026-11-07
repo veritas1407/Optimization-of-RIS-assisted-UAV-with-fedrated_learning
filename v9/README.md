@@ -63,6 +63,18 @@ checkpoint selection uses validation seeds `2_000_000+j`, and every reported tes
 * Aerial RIS (panel carried by a 4th UAV at 100 m) currently lowers EE: its propulsion
   energy (+37 % of fleet energy) outweighs its gain for the baseline policies.
 
+## Results
+
+The full results — single-area learning, multi-area federated learning, RIS placement
+(no / building / aerial) and parameter sweeps — with numbers, figure paths and stated
+limitations are in [`docs/v9_results.md`](../docs/v9_results.md). Headline numbers:
+
+* Learned MAPPO 8,049 bit/J vs greedy + RIS 7,724 vs straight + RIS 6,535 (single area).
+* Across city areas, FedAvg generalizes to 8 unseen areas as well as pooling all raw data
+  (7,542 vs 7,538) with 13x less traffic, and beats local-only training (7,301).
+* The building RIS adds +8.2 % EE even under learned flight; the UAV-carried RIS lowers
+  EE (5,354) because its carrier adds 40 % flight energy.
+
 ## Known limitations
 
 Perfect CSI at the RIS controller; buildings are boxes with a fixed +20 dB blockage loss;

@@ -9,6 +9,10 @@
 > it gives the reading order, ground rules, and milestone gates; the build spec itself is
 > [`docs/blueprint/technical-blueprint.md`](docs/blueprint/technical-blueprint.md).
 > Do not extend the v8 script; do not treat the v8 results below as validated.
+>
+> **v9 is implemented** in [`v9/`](v9/README.md) (500 m urban scene, shared building RIS,
+> MAPPO / IPPO / FedAvg / FedProx / FedPer, multi-area federated learning). Results:
+> [`docs/v9_results.md`](docs/v9_results.md).
 
 > **Reference:** Jiang et al., "RIS-Assisted UAV-Enabled IoT Network,"
 > *IEEE Internet of Things Journal*, Vol. 12, No. 20, October 2025.
