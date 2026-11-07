@@ -37,10 +37,16 @@ class RISUAVEnv:
             self.ris_center = np.asarray(cfg.ris.center, dtype=float)
             self.ris_elems = ph.ris_elements(self.ris_center, cfg.ris.normal,
                                              cfg.ris.ny, cfg.ris.nz, self.spacing)
-        self.obs_dim = 5 + 3 + 2 * (self.n_agents - 1) + 2 + TOP_K * DEV_FEATS + 2
+        self.agent_id = cfg.agent_id_obs
+        self.obs_dim = (5 + 3 + 2 * (self.n_agents - 1) + 2 + TOP_K * DEV_FEATS + 2
+                        + (self.n_agents if self.agent_id else 0))
         self.state_dim = self.obs_dim * self.n_agents
         self.act_dim = 2
         self.rng = np.random.default_rng(seed)
+        # one landing slot per agent inside the final zone, spread across the approach direction
+        offs = (np.arange(self.n_agents) - (self.n_agents - 1) / 2.0) * min(cfg.d_min * 1.2, cfg.r_final)
+        perp = np.array([1.0, -1.0]) / np.sqrt(2.0)
+        self.final_targets = np.asarray(cfg.final_xy, float)[None, :] + offs[:, None] * perp[None, :]
 
     # ------------------------------------------------------------ episode setup
 
@@ -98,7 +104,7 @@ class RISUAVEnv:
         self.blocked = ph.segments_blocked(self.dev[:, None, :], self.pos[None, :self.K, :], self.boxes)
         self.ris_elig = self._ris_eligibility()
         self.phi = self._potentials()
-        self.ep = {"bits": 0.0, "energy": 0.0, "collisions": 0, "bits_shadow": 0.0}
+        self.ep = {"bits": 0.0, "energy": 0.0, "collisions": 0, "bits_shadow": 0.0, "rth_slots": 0}
         obs = self._obs()
         return obs, obs.ravel().copy()
 
@@ -131,6 +137,25 @@ class RISUAVEnv:
     def step(self, actions):
         cfg = self.cfg
         a = np.clip(np.asarray(actions, dtype=float).reshape(self.n_agents, 2), -1.0, 1.0)
+
+        # return-to-home autopilot (safety shield)
+        overridden = np.zeros(self.n_agents, dtype=bool)
+        if cfg.rth_shield:
+            tl_now = self._time_left()
+            tl_after = self._time_left(self.slot + 1)
+            for k in range(self.n_agents):
+                to = self.final_targets[k] - self.pos[k, :2]
+                d = np.linalg.norm(to)
+                if d < 5.0:
+                    continue
+                v_home = cfg.v_max * to / d
+                turn_t = np.linalg.norm(v_home - self.vel[k]) / cfg.a_max   # time to swing round
+                budget = cfg.rth_frac * cfg.v_max * max(tl_after - turn_t, 0.0)
+                if d >= budget:
+                    # head home at the speed that arrives exactly at the end (capped at v_max)
+                    a[k] = to / d * min(1.0, d / (cfg.v_max * max(tl_now, cfg.dt)))
+                    overridden[k] = True
+            self.ep["rth_slots"] += int(overridden.sum())
 
         # kinematics with acceleration and speed limits
         v_cmd = a * cfg.v_max
@@ -182,7 +207,7 @@ class RISUAVEnv:
         self.ep["bits_shadow"] += float(bits[self.shadow].sum())
 
         info = {
-            "bits": bits_tot, "energy": e_tot, "collisions": n_coll,
+            "bits": bits_tot, "energy": e_tot, "collisions": n_coll, "overridden": overridden,
             "served": served, "ris_targets": ris_targets,
             "pos": self.pos.copy(), "remaining": self.remaining.copy(),
         }
@@ -205,6 +230,7 @@ class RISUAVEnv:
             "shadow_delivered_frac": (self.ep["bits_shadow"] / self.data0[sh].sum()) if sh.any() else np.nan,
             "collisions": self.ep["collisions"],
             "reached_final": float(np.mean(d_final <= cfg.r_final)),
+            "rth_frac": self.ep["rth_slots"] / (cfg.M * self.n_agents),
         }
 
     # ------------------------------------------------------------ communication
@@ -347,5 +373,7 @@ class RISUAVEnv:
                             np.clip(snr[i] / 50.0, -1.0, 1.0)]
             f += list(dev_f.ravel())
             f += [self.remaining.sum() / max(self.data0.sum(), 1.0), float(is_ris_agent)]
+            if self.agent_id:   # lets a shared/averaged policy give each UAV its own role
+                f += list(np.eye(self.n_agents)[a])
             obs[a] = f
         return obs

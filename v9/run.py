@@ -79,13 +79,38 @@ def exp_gate(args):
     print(json.dumps({k: v for k, v in summary.items() if k != "config"}, indent=2))
 
 
+def exp_train(args):
+    from .ppo import PPOConfig
+    from .trainers import TrainConfig, train
+
+    overrides = json.loads(args.scenario) if args.scenario else {}
+    cfg = get_preset(args.preset, **overrides)
+    tc = TrainConfig(algo=args.algo, episodes=args.episodes, E=args.E, mu=args.mu, seed=args.seed,
+                     lam_update=args.lam_update, eval_every=args.eval_every,
+                     ppo=PPOConfig(**(json.loads(args.ppo) if args.ppo else {})))
+    tag = args.tag or (f"{args.algo}" + (f"_E{args.E}" if args.algo.startswith("fed") else ""))
+    out = RESULTS / "train" / args.preset / tag / f"seed{args.seed}"
+    train(cfg, tc, out)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser()
-    p.add_argument("--exp", required=True, choices=["gate"])
+    p.add_argument("--exp", required=True, choices=["gate", "train"])
     p.add_argument("--n-eval", type=int, default=20)
+    p.add_argument("--preset", default="building")
+    p.add_argument("--algo", default="ctde", choices=["ctde", "ippo", "fedavg", "fedprox"])
+    p.add_argument("--episodes", type=int, default=2000)
+    p.add_argument("--E", type=int, default=1)
+    p.add_argument("--mu", type=float, default=0.01)
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--eval-every", type=int, default=100)
+    p.add_argument("--lam-update", action="store_true")
+    p.add_argument("--scenario", default="", help="JSON dict of ScenarioConfig overrides")
+    p.add_argument("--ppo", default="", help="JSON dict of PPOConfig overrides")
+    p.add_argument("--tag", default="")
     args = p.parse_args(argv)
     t = time.time()
-    {"gate": exp_gate}[args.exp](args)
+    {"gate": exp_gate, "train": exp_train}[args.exp](args)
     print(f"done in {time.time() - t:.1f}s")
 
 

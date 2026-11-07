@@ -112,5 +112,109 @@ def plot_gate():
     print("gate figures written to", d)
 
 
+LABELS = {"ctde": "MAPPO-CTDE (centralized)", "ippo": "IPPO (no exchange)",
+          "fedavg_E1": "FedAvg (E=1)", "fedavg_E4": "FedAvg (E=4)", "fedavg_E16": "FedAvg (E=16)",
+          "fedprox_E4": "FedProx (E=4, μ=0.01)", "fedprox_E1": "FedProx (E=1)"}
+
+
+def _runs(preset):
+    root = RESULTS / "train" / preset
+    out = {}
+    if not root.exists():
+        return out
+    for tag_dir in sorted(root.iterdir()):
+        if tag_dir.name.startswith("smoke"):
+            continue
+        seeds = [s for s in sorted(tag_dir.glob("seed*")) if (s / "test.json").exists()]
+        if seeds:
+            out[tag_dir.name] = seeds
+    return out
+
+
+def summarize(preset="building"):
+    import json
+    rows = []
+    for tag, seeds in _runs(preset).items():
+        tests = [json.loads((s / "test.json").read_text()) for s in seeds]
+        row = {"method": tag, "n_seeds": len(tests)}
+        for k in ("ee", "delivered_frac", "shadow_delivered_frac", "energy", "reached_final",
+                  "collisions", "comm_MB"):
+            vals = np.array([t[k] for t in tests], float)
+            row[f"{k}_mean"], row[f"{k}_std"] = float(np.mean(vals)), float(np.std(vals))
+        rows.append(row)
+    if rows:
+        out = RESULTS / "train" / preset / "summary.csv"
+        with out.open("w", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w.writeheader()
+            w.writerows(rows)
+    return rows
+
+
+def _baseline_ee(preset):
+    path = RESULTS / "gate" / "baselines.csv"
+    if not path.exists():
+        return {}
+    rs = [r for r in _read_csv(path) if r["preset"] == preset]
+    pick = {("straight", "timeshare"): "straight line + RIS", ("greedy", "none"): "greedy, no RIS",
+            ("greedy", "timeshare"): "greedy + RIS"}
+    return {pick[(r["policy"], r["arbitration"])]: float(r["ee_mean"]) for r in rs
+            if (r["policy"], r["arbitration"]) in pick}
+
+
+def plot_train(preset="building"):
+    runs = _runs(preset)
+    if not runs:
+        print("no finished runs for", preset)
+        return
+    rows = summarize(preset)
+    out = RESULTS / "train" / preset
+    base = _baseline_ee(preset)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    for tag, seeds in runs.items():
+        logs = [_read_csv(s / "eval_log.csv") for s in seeds]
+        n = min(len(lg) for lg in logs)
+        x = np.array([float(r["episode"]) for r in logs[0][:n]])
+        y = np.array([[float(r["ee"]) for r in lg[:n]] for lg in logs])
+        mu, sd = y.mean(0), y.std(0)
+        ax.plot(x, mu, lw=2, label=f"{LABELS.get(tag, tag)} ({len(seeds)} seeds)")
+        ax.fill_between(x, mu - sd, mu + sd, alpha=0.2)
+    for (name, v), ls in zip(base.items(), [":", "-.", "--"]):
+        ax.axhline(v, color="k", ls=ls, lw=1, label=f"baseline: {name}")
+    ax.set_xlabel("training episode")
+    ax.set_ylabel("validation EE (bit/J)")
+    ax.set_title(f"Learning curves ({preset} scene), mean ± std over seeds")
+    ax.legend(fontsize=8)
+    fig.savefig(out / "fig_learning_curves.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(7.5, 5))
+    floor = 1e-1
+    for r in rows:
+        x = max(r["comm_MB_mean"], floor)
+        ax.errorbar(x, r["ee_mean"], yerr=r["ee_std"], fmt="o", ms=8, capsize=4,
+                    label=LABELS.get(r["method"], r["method"]))
+        ax.annotate(f"{r['comm_MB_mean']:.0f} MB" if r["comm_MB_mean"] >= 1 else "0 MB",
+                    (x, r["ee_mean"]), textcoords="offset points", xytext=(6, 6), fontsize=8)
+    for (name, v), ls in zip(base.items(), [":", "-.", "--"]):
+        ax.axhline(v, color="k", ls=ls, lw=1, label=f"baseline: {name}")
+    ax.set_xscale("log")
+    ax.set_xlabel("training communication (MB, log scale; IPPO plotted at 0.1)")
+    ax.set_ylabel("test EE (bit/J)")
+    ax.set_title("Energy efficiency vs. communication cost of training")
+    ax.legend(fontsize=8)
+    fig.savefig(out / "fig_ee_vs_comm.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    for r in rows:
+        print(f"  {r['method']:12s} seeds={r['n_seeds']}  EE {r['ee_mean']:7.0f} ± {r['ee_std']:5.0f}  "
+              f"delivered {r['delivered_frac_mean']:.2f}  final {r['reached_final_mean']:.2f}  "
+              f"comm {r['comm_MB_mean']:8.1f} MB")
+
+
 if __name__ == "__main__":
-    {"gate": plot_gate}[sys.argv[1]]()
+    cmd = sys.argv[1]
+    if cmd == "gate":
+        plot_gate()
+    elif cmd == "train":
+        plot_train(sys.argv[2] if len(sys.argv) > 2 else "building")

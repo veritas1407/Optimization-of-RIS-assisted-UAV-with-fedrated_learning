@@ -23,12 +23,7 @@ def _vel_to_action(v, v_max):
 
 
 def _final_slot_targets(env):
-    cfg = env.cfg
-    f = np.asarray(cfg.final_xy, dtype=float)
-    n = env.n_agents
-    offs = (np.arange(n) - (n - 1) / 2.0) * min(cfg.d_min * 1.2, cfg.r_final)
-    perp = np.array([1.0, -1.0]) / np.sqrt(2.0)
-    return f[None, :] + offs[:, None] * perp[None, :]
+    return env.final_targets
 
 
 def random_policy(env, obs, rng=np.random.default_rng(0)):

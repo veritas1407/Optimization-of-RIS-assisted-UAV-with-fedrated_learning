@@ -111,6 +111,15 @@ class ScenarioConfig:
     s: float = 0.05
     A: float = 0.503
 
+    # Observation
+    agent_id_obs: bool = True         # one-hot agent index (symmetry breaking for shared policies)
+
+    # Return-to-home autopilot: when the remaining time is just enough to reach the final
+    # point, the autopilot overrides the agent and flies home (data collection continues).
+    # Overridden slots are counted and excluded from the policy-gradient loss.
+    rth_shield: bool = True
+    rth_frac: float = 0.9             # fraction of v_max the autopilot plans with (0.9 = least conservative value with 100% completion)
+
     # Reward
     lam_init: float = 6.0e3           # Dinkelbach price (bits/J); ~ straight-line + RIS baseline EE
     w_final: float = 5.0

@@ -56,6 +56,16 @@ def test_straight_line_reaches_final_without_collisions():
     assert m["reached_final"] == 1.0 and m["collisions"] == 0
 
 
+def test_return_to_home_shield_brings_random_policy_home():
+    from v9.baselines import random_policy
+    cfg = get_preset("building")
+    reached = [run_episode(RISUAVEnv(cfg), random_policy, seed=s)["reached_final"] for s in range(5)]
+    assert np.mean(reached) == 1.0
+    off = get_preset("building", rth_shield=False)
+    m = run_episode(RISUAVEnv(off), random_policy, seed=0)
+    assert m["rth_frac"] == 0.0
+
+
 def test_no_ris_mode_ignores_ris():
     cfg = get_preset("building", arbitration="none")
     env = RISUAVEnv(cfg)
