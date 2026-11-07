@@ -173,6 +173,76 @@ def legacy_small() -> ScenarioConfig:
     )
 
 
+def random_area(layout_seed: int, base: ScenarioConfig | None = None) -> ScenarioConfig:
+    """A procedurally generated city area (for multi-area federated learning).
+
+    One urban block per area: a courtyard enclosed by two long building rows and two end
+    caps, placed off the start->final diagonal at a random position, orientation and size.
+    The RIS hangs 3 m above the top of the row that lies farther from the diagonal, on its
+    courtyard face, so it sees the shadowed courtyard devices and, over the lower opposite
+    row, the open field where the UAVs fly.
+    """
+    import numpy as np
+
+    base = base or ScenarioConfig()
+    rng = np.random.default_rng(10_000 + layout_seed)
+    A = base.area
+    length = rng.uniform(100.0, 160.0)          # courtyard length
+    width = rng.uniform(25.0, 35.0)             # courtyard width
+    depth = rng.uniform(30.0, 40.0)             # building depth
+    h_ris_row = rng.uniform(40.0, 50.0)
+    h_opp_row = rng.uniform(35.0, h_ris_row)    # opposite row no taller than the RIS row
+    h_caps = rng.uniform(35.0, 45.0)
+    along_x = bool(rng.integers(2))             # courtyard long axis along x or y
+    side = 1.0 if rng.integers(2) else -1.0     # +1: block south-east of the diagonal
+    # block centre: 120-180 m off the diagonal, within the area
+    while True:
+        t = rng.uniform(0.35, 0.65) * A
+        off = rng.uniform(120.0, 180.0) / np.sqrt(2.0)
+        cx, cy = t + side * off, t - side * off
+        half_x = (length / 2 + 20) if along_x else (width / 2 + depth + 20)
+        half_y = (width / 2 + depth + 20) if along_x else (length / 2 + 20)
+        if half_x + 10 < cx < A - half_x - 10 and half_y + 10 < cy < A - half_y - 10:
+            break
+    w2, l2 = width / 2, length / 2
+    if along_x:
+        lo_row = Box(cx - l2, cy - w2 - depth, cx + l2, cy - w2, 0.0)   # south row
+        hi_row = Box(cx - l2, cy + w2, cx + l2, cy + w2 + depth, 0.0)   # north row
+        caps = (Box(cx - l2 - 20, cy - w2 - depth, cx - l2, cy + w2 + depth, h_caps),
+                Box(cx + l2, cy - w2 - depth, cx + l2 + 20, cy + w2 + depth, h_caps))
+        # diagonal lies north-west of a south-east block -> RIS on the south row, facing north
+        ris_on_lo = side > 0
+        normal = (0.0, 1.0, 0.0) if ris_on_lo else (0.0, -1.0, 0.0)
+        y_wall = (cy - w2 + 0.5) if ris_on_lo else (cy + w2 - 0.5)
+        ris_xy = (cx + rng.uniform(-20.0, 20.0), y_wall)
+        shadow = (cx - l2 + 10, cy - w2 + 5, cx + l2 - 10, cy + w2 - 5)
+    else:
+        lo_row = Box(cx - w2 - depth, cy - l2, cx - w2, cy + l2, 0.0)   # west row
+        hi_row = Box(cx + w2, cy - l2, cx + w2 + depth, cy + l2, 0.0)   # east row
+        caps = (Box(cx - w2 - depth, cy - l2 - 20, cx + w2 + depth, cy - l2, h_caps),
+                Box(cx - w2 - depth, cy + l2, cx + w2 + depth, cy + l2 + 20, h_caps))
+        # diagonal lies west of a south-east block -> RIS on the east row, facing west
+        ris_on_lo = side < 0
+        normal = (1.0, 0.0, 0.0) if ris_on_lo else (-1.0, 0.0, 0.0)
+        x_wall = (cx - w2 + 0.5) if ris_on_lo else (cx + w2 - 0.5)
+        ris_xy = (x_wall, cy + rng.uniform(-20.0, 20.0))
+        shadow = (cx - w2 + 5, cy - l2 + 10, cx + w2 - 5, cy + l2 - 10)
+    h_lo, h_hi = (h_ris_row, h_opp_row) if ris_on_lo else (h_opp_row, h_ris_row)
+    rows = (replace(lo_row, h=h_lo), replace(hi_row, h=h_hi))
+    ris = replace(base.ris, kind="building", center=(ris_xy[0], ris_xy[1], h_ris_row + 3.0),
+                  normal=normal)
+    return replace(base, name=f"area{layout_seed}", buildings=rows + caps,
+                   shadow_region=shadow, ris=ris)
+
+
+# Layout seeds for the multi-area study: disjoint training / validation / test areas.
+# Each set covers the four layout types (block north-west / south-east of the flight
+# diagonal x courtyard along x / along y); each training area is one distinct type.
+TRAIN_AREAS = (1, 2, 9, 5)                     # NW-x, NW-y, SE-x, SE-y
+VAL_AREAS = (105, 101, 102, 103)               # NW-x, NW-y, SE-x, SE-y
+TEST_AREAS = (227, 237, 204, 206, 201, 211, 203, 207)   # 2 of each type
+
+
 PRESETS = {"building": building, "aerial": aerial, "legacy_small": legacy_small}
 
 

@@ -96,9 +96,44 @@ def exp_train(args):
     train(cfg, tc, out)
 
 
+def exp_multiarea(args):
+    from .multiarea import MultiAreaConfig, train_multiarea
+    from .ppo import PPOConfig
+
+    mc = MultiAreaConfig(mode=args.mode, episodes_per_area=args.episodes, E=args.E, seed=args.seed,
+                         fed_parts=args.fed_parts,
+                         ppo=PPOConfig(**(json.loads(args.ppo) if args.ppo else {})))
+    tag = args.tag or (args.mode + (f"_E{args.E}" + ("_both" if args.fed_parts == "both" else "")
+                                    if args.mode == "fedavg" else ""))
+    out = RESULTS / "multiarea" / tag / f"seed{args.seed}"
+    if args.skip_existing and (out / "test.json").exists():
+        print(f"  [{tag} s{args.seed}] already done, skipping")
+        return
+    train_multiarea(mc, out)
+
+
+def exp_multiarea_baselines(args):
+    from .config import TEST_AREAS, random_area
+
+    rows = []
+    for pol, arb in (("straight", "none"), ("straight", "timeshare"), ("greedy", "none"),
+                     ("greedy", "timeshare")):
+        ees, dl = [], []
+        for s in TEST_AREAS:
+            m = evaluate(replace(random_area(s), arbitration=arb), POLICIES[pol], 5)
+            ees.append(m["ee"][0])
+            dl.append(m["delivered_frac"][0])
+        rows.append({"policy": pol, "arbitration": arb, "test_ee": float(np.mean(ees)),
+                     "test_ee_std_over_areas": float(np.std(ees)), "test_delivered": float(np.mean(dl))})
+        print(f"  {pol:8s} {arb:9s} EE on unseen areas {np.mean(ees):7.0f} ± {np.std(ees):5.0f}")
+    _write_csv(RESULTS / "multiarea" / "baselines.csv", rows)
+
+
 def main(argv=None):
     p = argparse.ArgumentParser()
-    p.add_argument("--exp", required=True, choices=["gate", "train"])
+    p.add_argument("--exp", required=True, choices=["gate", "train", "multiarea", "multiarea_baselines"])
+    p.add_argument("--mode", default="fedavg", choices=["local", "fedavg", "pooled"])
+    p.add_argument("--fed-parts", default="actor", choices=["actor", "both"])
     p.add_argument("--n-eval", type=int, default=20)
     p.add_argument("--preset", default="building")
     p.add_argument("--algo", default="ctde", choices=["ctde", "ippo", "fedavg", "fedprox", "fedper"])
@@ -114,7 +149,8 @@ def main(argv=None):
     p.add_argument("--skip-existing", action="store_true")
     args = p.parse_args(argv)
     t = time.time()
-    {"gate": exp_gate, "train": exp_train}[args.exp](args)
+    {"gate": exp_gate, "train": exp_train, "multiarea": exp_multiarea,
+     "multiarea_baselines": exp_multiarea_baselines}[args.exp](args)
     print(f"done in {time.time() - t:.1f}s")
 
 

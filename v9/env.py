@@ -19,6 +19,24 @@ MAX_RIS_CONFIGS = 8
 
 class RISUAVEnv:
     def __init__(self, cfg: ScenarioConfig, seed: int = 0):
+        self.set_scenario(cfg)
+        self.lam = float(cfg.lam_init)
+        self.agent_id = cfg.agent_id_obs
+        self.obs_dim = (5 + 3 + 2 * (self.n_agents - 1) + 2 + TOP_K * DEV_FEATS + 2
+                        + (self.n_agents if self.agent_id else 0))
+        self.state_dim = self.obs_dim * self.n_agents
+        self.act_dim = 2
+        self.rng = np.random.default_rng(seed)
+        # one landing slot per agent inside the final zone, spread across the approach direction
+        offs = (np.arange(self.n_agents) - (self.n_agents - 1) / 2.0) * min(cfg.d_min * 1.2, cfg.r_final)
+        perp = np.array([1.0, -1.0]) / np.sqrt(2.0)
+        self.final_targets = np.asarray(cfg.final_xy, float)[None, :] + offs[:, None] * perp[None, :]
+
+    def set_scenario(self, cfg: ScenarioConfig):
+        """(Re)load the scenario geometry. Used to switch city areas between episodes;
+        the observation/action sizes must stay the same."""
+        if hasattr(self, "obs_dim"):
+            assert cfg.n_agents == self.n_agents and cfg.n_devices == self.I, "area must keep sizes"
         self.cfg = cfg
         self.boxes = ph.boxes_array(cfg.buildings)
         self.p_w = ph.tx_power_w(cfg)
@@ -31,22 +49,11 @@ class RISUAVEnv:
         self.L = cfg.ris.L
         self.v_pmin, self.p_min = ph.min_power_speed(cfg)
         self.e_ref_slot = self.n_agents * self.p_min * cfg.dt
-        self.lam = float(cfg.lam_init)
         self.spacing = cfg.ris.spacing_wl * ph.wavelength(cfg.fc)
         if self.use_ris and not self.aerial:
             self.ris_center = np.asarray(cfg.ris.center, dtype=float)
             self.ris_elems = ph.ris_elements(self.ris_center, cfg.ris.normal,
                                              cfg.ris.ny, cfg.ris.nz, self.spacing)
-        self.agent_id = cfg.agent_id_obs
-        self.obs_dim = (5 + 3 + 2 * (self.n_agents - 1) + 2 + TOP_K * DEV_FEATS + 2
-                        + (self.n_agents if self.agent_id else 0))
-        self.state_dim = self.obs_dim * self.n_agents
-        self.act_dim = 2
-        self.rng = np.random.default_rng(seed)
-        # one landing slot per agent inside the final zone, spread across the approach direction
-        offs = (np.arange(self.n_agents) - (self.n_agents - 1) / 2.0) * min(cfg.d_min * 1.2, cfg.r_final)
-        perp = np.array([1.0, -1.0]) / np.sqrt(2.0)
-        self.final_targets = np.asarray(cfg.final_xy, float)[None, :] + offs[:, None] * perp[None, :]
 
     # ------------------------------------------------------------ episode setup
 
