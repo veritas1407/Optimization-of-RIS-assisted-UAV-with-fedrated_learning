@@ -25,6 +25,19 @@ from .config import get_preset
 RESULTS = Path("results_v9")
 
 
+def _atomic(out: Path, fn):
+    """Run fn into out.partial/ and rename to out/ only when it finishes (no half-written
+    result folders; *.partial is git-ignored)."""
+    import shutil
+
+    tmp = out.with_name(out.name + ".partial")
+    shutil.rmtree(tmp, ignore_errors=True)
+    res = fn(tmp)
+    shutil.rmtree(out, ignore_errors=True)
+    tmp.rename(out)
+    return res
+
+
 def _write_csv(path: Path, rows: list[dict]):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="") as f:
@@ -167,7 +180,7 @@ def exp_train(args):
     if args.skip_existing and (out / "test.json").exists():
         print(f"  [{tag} s{args.seed}] already done, skipping")
         return
-    train(cfg, tc, out)
+    _atomic(out, lambda d: train(cfg, tc, d))
 
 
 def exp_multiarea(args):
@@ -183,7 +196,7 @@ def exp_multiarea(args):
     if args.skip_existing and (out / "test.json").exists():
         print(f"  [{tag} s{args.seed}] already done, skipping")
         return
-    train_multiarea(mc, out)
+    _atomic(out, lambda d: train_multiarea(mc, d))
 
 
 def load_policy(preset: str, tag: str, seed: int, cfg=None):
