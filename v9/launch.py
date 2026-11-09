@@ -36,6 +36,17 @@ def pilots2(seeds, episodes):
             for s in seeds for tag, extra in variants.items()]
 
 
+def pilots3(seeds, episodes):
+    # G / H: setting C with more devices in each UAV's view (top_k 12 / 24 = all devices);
+    # I: setting C again (top_k 8) as the control, on the environment with the separating autopilot
+    variants = {"ctde_pG": ["--scenario", '{"top_k": 12}'], "ctde_pH": ["--scenario", '{"top_k": 24}'],
+                "ctde_pI": []}
+    return [(f"pilots/{tag}_s{s}", ["--exp", "train", "--skip-existing", "--preset", "building", "--algo", "ctde",
+                                    "--episodes", str(episodes), "--eval-every", "200", "--tag", tag,
+                                    "--seed", str(s), "--ppo", '{"lr_anneal": true}'] + extra)
+            for s in seeds for tag, extra in variants.items()]
+
+
 # settings locked from the pilots (validation only): Dinkelbach price + learning-rate annealing
 PPO = '{"lr_anneal": true}'
 METHODS = [("ctde", []), ("ippo", []), ("fedavg_E1", ["--algo", "fedavg", "--E", "1"]),
@@ -84,7 +95,7 @@ def post(seeds, episodes):
          for n in SWEEPS]
 
 
-GROUPS = {"pilots": pilots, "pilots2": pilots2, "single": single, "presets": presets,
+GROUPS = {"pilots": pilots, "pilots2": pilots2, "pilots3": pilots3, "single": single, "presets": presets,
           "multiarea": multiarea, "campaign": campaign, "post": post}
 
 
