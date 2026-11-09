@@ -154,7 +154,8 @@ def summarize(preset="building"):
 
     from .stats import mean_ci
     rows = []
-    ref = {k: _gate_episodes(f"{preset}|{k}|timeshare") for k in ("greedy_tuned", "greedy_dec", "straight")}
+    gp, arb = ("building", "none") if preset == "building_noris" else (preset, "timeshare")
+    ref = {k: _gate_episodes(f"{gp}|{k}|{arb}") for k in ("greedy_tuned", "greedy_dec", "straight")}
     for tag, seeds in _runs(preset).items():
         tests = [json.loads((s / "test.json").read_text()) for s in seeds]
         row = {"method": tag, "n_seeds": len(tests)}
