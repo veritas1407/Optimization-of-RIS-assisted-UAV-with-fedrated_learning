@@ -331,6 +331,8 @@ def main(argv=None):
     p.add_argument("--seeds", default="0,1,2")
     args = p.parse_args(argv)
     t = time.time()
+    import torch
+    torch.set_num_threads(1)   # small networks; several runs share the machine
     {"gate": exp_gate, "train": exp_train, "multiarea": exp_multiarea,
      "multiarea_baselines": exp_multiarea_baselines, "sweep": exp_sweep}[args.exp](args)
     print(f"done in {time.time() - t:.1f}s")
