@@ -5,7 +5,8 @@
 
 Two stages: random search over a grid (short evaluation), then the best candidates are
 re-evaluated on more validation episodes. Selection: reach the final region in >= 99 % of
-episodes with (almost) no collisions, then highest mean EE. Results go to
+episodes with at most MAX_COLLISIONS separation violations per episode, then highest mean
+EE (if nothing qualifies, fewest violations, with a warning). Results go to
 results_v9/tune/greedy_<target>_<central|decentral>.json and are picked up by
 ``baselines.tuned_greedy``.
 """
@@ -33,6 +34,8 @@ GRID = {
     "inactive_w": [0.1, 0.25, 0.5, 0.75, 1.0],
     "orbit_r": [5.0, 10.0, 15.0, 25.0, 40.0],
 }
+SEP = {True: [1.25, 1.5, 2.0], False: [2.0, 2.5, 3.0, 4.0]}   # safety gap; decentralized sees positions only
+MAX_COLLISIONS = 0.5    # separation violations per episode allowed (learned agents: ~0.1-0.5)
 
 
 def target_cfgs(target: str):
@@ -55,16 +58,18 @@ def _eval(args):
 
 
 def _key(m):
-    return (m["reached_final"] >= 0.99 and m["collisions"] <= 0.05, m["ee"])
+    ok = m["reached_final"] >= 0.99 and m["collisions"] <= MAX_COLLISIONS
+    return (ok, m["ee"] if ok else -m["collisions"])
 
 
 def tune(target: str, centralized: bool, n_random: int = 150, n1: int = 20, n2: int = 80,
          top: int = 10, seed: int = 0, workers: int = 4) -> dict:
     rng = np.random.default_rng(seed)
-    cands = [asdict(GreedyParams()),
-             dict(margin=1.0, vcap=12.0, need_w=1.0, dscale=1000.0, inactive_w=0.5, orbit_r=15.0)]
+    base = asdict(GreedyParams()) | ({} if centralized else {"sep_margin": 3.0})
+    cands = [base, dict(margin=1.0, vcap=12.0, need_w=1.0, dscale=1000.0, inactive_w=0.5, orbit_r=15.0,
+                        sep_margin=base["sep_margin"])]
     while len(cands) < n_random:
-        c = {k: float(rng.choice(v)) for k, v in GRID.items()}
+        c = {k: float(rng.choice(v)) for k, v in (GRID | {"sep_margin": SEP[centralized]}).items()}
         if c not in cands:
             cands.append(c)
     t0 = time.time()
@@ -83,8 +88,11 @@ def tune(target: str, centralized: bool, n_random: int = 150, n1: int = 20, n2: 
     TUNED_DIR.mkdir(parents=True, exist_ok=True)
     tag = "central" if centralized else "decentral"
     (TUNED_DIR / f"greedy_{target}_{tag}.json").write_text(json.dumps(out, indent=2))
+    if not _key(s2[best])[0]:
+        print(f"  WARNING: no candidate met reach >= 0.99 and collisions <= {MAX_COLLISIONS}", flush=True)
     print(f"  {target:15s} {tag:9s} val EE {s2[best]['ee']:7.0f} (defaults {default['ee']:7.0f})  "
-          f"reached {s2[best]['reached_final']:.2f}  params {cands[order[best]]}  "
+          f"reached {s2[best]['reached_final']:.2f}  collisions {s2[best]['collisions']:.2f}  "
+          f"params {cands[order[best]]}  "
           f"({out['seconds']:.0f}s)", flush=True)
     return out
 

@@ -5,6 +5,8 @@ same environment, channels and seeds as the learned agents.
 
 * ``random_policy``   - uniform random commands (reproducible per episode).
 * ``straight_policy`` - constant-velocity straight line (Jiang et al.'s FT baseline).
+* ``separate``        - separation layer used by the straight line and Greedy so that the
+  heuristics respect the same minimum UAV separation the learned agents are penalised for.
 * ``Greedy``          - parameterised heuristic. ``centralized=True`` sees every device and
   assigns devices to UAVs jointly (a strong reference with full information);
   ``centralized=False`` gives each UAV only what a learned UAV observes (its top-K devices
@@ -19,7 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .env import RISUAVEnv
+from .env import RISUAVEnv, separate
 
 TEST_SEED_BASE = 5_000_000       # fresh test set (v9.1): never used during development
 OLD_TEST_SEED_BASE = 1_000_000   # v9.0 test seeds (reused during development)
@@ -48,7 +50,7 @@ def straight_policy(env, obs):
     acts = np.zeros((env.n_agents, 2))
     for a in range(env.n_agents):
         acts[a] = _vel_to_action((env.final_targets[a] - env.pos[a, :2]) / tl, cfg.v_max)
-    return acts
+    return separate(env, acts)
 
 
 @dataclass(frozen=True)
@@ -59,6 +61,7 @@ class GreedyParams:
     dscale: float = 150.0       # distance discount scale (m)
     inactive_w: float = 0.5     # weight of devices whose window has not opened yet
     orbit_r: float = 15.0       # orbit radius around the target device (m)
+    sep_margin: float = 1.25    # safety gap (x required separation) kept from the other UAVs
 
 
 class Greedy:
@@ -120,7 +123,7 @@ class Greedy:
                 v = np.array([-to[1], to[0]]) if dist > 1e-6 else np.array([1.0, 0.0])
                 v = v / np.linalg.norm(v) * cruise
             acts[a] = _vel_to_action(v, cfg.v_max)
-        return acts
+        return separate(env, acts, see_velocities=self.centralized, margin=P.sep_margin)
 
     def describe(self) -> dict:
         return {"centralized": self.centralized, **asdict(self.p)}
@@ -131,9 +134,13 @@ greedy_policy = Greedy()   # untuned defaults (the v9.0 heuristic)
 
 def tuned_greedy(target: str, centralized: bool = True) -> Greedy:
     """Greedy with the parameters chosen by ``v9.tune`` on validation episodes for ``target``
-    (a preset name or "multiarea"); falls back to the defaults if no tuning file exists."""
+    (a preset name or "multiarea"); falls back to the defaults if no tuning file exists
+    (decentralized default: a wider safety gap, since it does not see where others fly)."""
     f = TUNED_DIR / f"greedy_{target}_{'central' if centralized else 'decentral'}.json"
-    params = GreedyParams(**json.loads(f.read_text())["params"]) if f.exists() else GreedyParams()
+    if f.exists():
+        params = GreedyParams(**json.loads(f.read_text())["params"])
+    else:
+        params = GreedyParams() if centralized else GreedyParams(sep_margin=3.0)
     return Greedy(params, centralized=centralized)
 
 POLICIES = {"random": random_policy, "straight": straight_policy, "greedy": greedy_policy}

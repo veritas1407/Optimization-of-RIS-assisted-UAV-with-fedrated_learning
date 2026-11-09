@@ -195,7 +195,7 @@ def legacy_small() -> ScenarioConfig:
     return ScenarioConfig(
         name="legacy_small",
         area=20.0, M=20, dt=1.0, K=3, uav_alt=5.0, v_max=15.0, a_max=100.0, d_min=3.0,
-        start_xy=(0.0, 0.0), start_spacing=3.0, final_xy=(16.0, 16.0), r_final=2.0,
+        start_xy=(0.0, 0.0), start_spacing=3.6, final_xy=(16.0, 16.0), r_final=3.0,
         buildings=(), fixed_devices=V8_DEVICES, data_mbit=(1e6, 1e6), always_on=True,
         p_tx_dbm=30.0, n_sub=12, clutter="fixed",
         ris=RISConfig(kind="building", center=(5.0, 9.0, 0.0), normal=(0.0, 0.0, 1.0),

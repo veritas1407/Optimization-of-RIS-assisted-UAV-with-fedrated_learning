@@ -149,3 +149,33 @@ def test_decentralized_greedy_runs_and_differs():
 def test_straight_line_still_collision_free():
     m = run_episode(RISUAVEnv(building()), straight_policy, seed=1)
     assert m["reached_final"] == 1.0 and m["collisions"] == 0
+
+
+@pytest.mark.parametrize("preset", ["building", "aerial", "legacy_small"])
+def test_landing_slots_strictly_inside_final_zone(preset):
+    env = RISUAVEnv(get_preset(preset))
+    d = np.linalg.norm(env.final_targets - np.asarray(env.cfg.final_xy), axis=1)
+    assert np.all(d < env.cfg.r_final)
+
+
+def test_building_landing_slots_unchanged():
+    env = RISUAVEnv(building())
+    assert np.allclose(np.linalg.norm(env.final_targets - np.asarray(env.cfg.final_xy), axis=1), [24, 0, 24])
+
+
+def test_separation_layer_keeps_uavs_apart():
+    from v9.env import separate
+    env = RISUAVEnv(building())
+    env.reset(seed=0)
+    env.pos[0, :2], env.pos[1, :2] = [200.0, 200.0], [240.0, 200.0]
+    env.vel[:] = 0.0
+    env.vel[0], env.vel[1] = [10.0, 0.0], [-10.0, 0.0]
+    acts = np.zeros((env.n_agents, 2))
+    acts[0], acts[1] = [1.0, 0.0], [-1.0, 0.0]          # flying head-on
+    env.step(separate(env, acts))
+    assert np.linalg.norm(env.pos[0] - env.pos[1]) >= env.cfg.d_min
+
+
+def test_autopilot_does_not_cause_separation_violations():
+    m = run_episode(RISUAVEnv(building()), Greedy(), seed=2_000_000)   # leaves late -> autopilot flies home
+    assert m["rth_frac"] > 0 and m["collisions"] <= 1

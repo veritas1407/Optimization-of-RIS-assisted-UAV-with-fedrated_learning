@@ -123,14 +123,16 @@ def exp_gate(args):
     rows = baseline_rows(cfg, pols, ["none", "random", "common", "timeshare"], args.n_eval, per_ep)
     rows += baseline_rows(get_preset("aerial"), ["straight", "greedy_tuned", "greedy_dec"], ["timeshare"],
                           args.n_eval, per_ep)
-    rows += baseline_rows(get_preset("legacy_small"), ["random", "straight", "greedy"],
+    # (the greedy heuristic is built for the 500 m scene - orbit radius, speeds - so the old
+    #  20 m scene uses the random and straight-line policies only)
+    rows += baseline_rows(get_preset("legacy_small"), ["random", "straight"],
                           ["none", "random", "timeshare"], args.n_eval, per_ep)
     _write_csv(out / "baselines.csv", rows)
     np.savez(out / "baselines_per_episode.npz", **per_ep)
     # paired RIS value: same policy family, same test episodes, RIS (time-share) vs no RIS
     ris_value = {}
     for preset, pol in (("building", "straight"), ("building", "greedy_tuned"), ("building", "greedy_dec"),
-                        ("legacy_small", "straight"), ("legacy_small", "greedy")):
+                        ("legacy_small", "straight"), ("legacy_small", "random")):
         ris_value[f"{preset}|{pol}"] = paired(per_ep[f"{preset}|{pol}|timeshare"], per_ep[f"{preset}|{pol}|none"])
     for pol in ("straight", "greedy_tuned", "greedy_dec"):
         ris_value[f"aerial_vs_building|{pol}"] = paired(per_ep[f"aerial|{pol}|timeshare"],

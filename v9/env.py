@@ -22,6 +22,53 @@ DEV_FEATS = 10
 MAX_RIS_CONFIGS = 8
 
 
+def separate(env, acts, adjust=None, see_velocities: bool = True, margin: float = 1.25,
+             iters: int = 3) -> np.ndarray:
+    """Adjust velocity commands (in [-1, 1]^2) so the UAVs keep the minimum 3-D separation at
+    the end of the slot: predicted end positions closer than margin x the required horizontal
+    gap are pushed apart. Only agents with adjust[k] change their command. With
+    see_velocities=False an agent only knows where the others are now (what a learned UAV
+    observes), not where they are flying. Used by the return-to-home autopilot and by the
+    heuristic baselines."""
+    cfg = env.cfg
+    n = env.n_agents
+    adjust = np.ones(n, bool) if adjust is None else np.asarray(adjust, bool)
+    v = np.asarray(acts, float) * cfg.v_max
+    dv_max = cfg.a_max * cfg.dt
+
+    def end_pos(k, vk):
+        dv = vk - env.vel[k]
+        nd = np.linalg.norm(dv)
+        v1 = env.vel[k] + (dv * dv_max / nd if nd > dv_max else dv)
+        return env.pos[k, :2] + 0.5 * (env.vel[k] + v1) * cfg.dt
+
+    for _ in range(iters):
+        ends = [end_pos(k, v[k]) for k in range(n)]
+        moved = False
+        for a in np.flatnonzero(adjust):
+            for b in range(n):
+                if a == b:
+                    continue
+                dz = abs(env.pos[a, 2] - env.pos[b, 2])
+                h_req = np.sqrt(max(cfg.d_min ** 2 - dz ** 2, 0.0))
+                if h_req <= 0.0:
+                    continue
+                pb = ends[b] if see_velocities else env.pos[b, :2]
+                rel = ends[a] - pb
+                dist = np.linalg.norm(rel)
+                gap = margin * h_req
+                if dist < gap:
+                    u = rel / dist if dist > 1e-6 else np.array([np.cos(a), np.sin(a)])
+                    share = 0.5 if adjust[b] else 1.0     # a non-adjusting neighbour will not move
+                    v[a] = v[a] + u * share * 2.0 * (gap - dist) / cfg.dt
+                    moved = True
+        if not moved:
+            break
+    sp = np.linalg.norm(v, axis=1, keepdims=True)
+    v = np.where(sp > cfg.v_max, v * cfg.v_max / np.maximum(sp, 1e-9), v)
+    return v / cfg.v_max
+
+
 class RISUAVEnv:
     def __init__(self, cfg: ScenarioConfig, seed: int = 0):
         self.set_scenario(cfg)
@@ -58,10 +105,18 @@ class RISUAVEnv:
             self.ris_center = np.asarray(cfg.ris.center, dtype=float)
             self.ris_elems = ph.ris_elements(self.ris_center, cfg.ris.normal,
                                              cfg.ris.ny, cfg.ris.nz, self.spacing)
-        # one landing slot per agent inside the final zone (kept inside the area)
-        offs = (np.arange(self.n_agents) - (self.n_agents - 1) / 2.0) * min(cfg.d_min * 1.2, cfg.r_final)
-        perp = np.array([1.0, -1.0]) / np.sqrt(2.0)
-        ft = np.asarray(cfg.final_xy, float)[None, :] + offs[:, None] * perp[None, :]
+        # one landing slot per agent strictly inside the final zone (and inside the area):
+        # a line across the diagonal if it fits, otherwise a ring (tiny legacy final zone)
+        n = self.n_agents
+        offs = (np.arange(n) - (n - 1) / 2.0) * cfg.d_min * 1.2
+        if np.abs(offs).max() <= 0.9 * cfg.r_final:
+            perp = np.array([1.0, -1.0]) / np.sqrt(2.0)
+            rel = offs[:, None] * perp[None, :]
+        else:
+            ring = min(0.9 * cfg.r_final, 1.3 * cfg.d_min / (2.0 * np.sin(np.pi / n))) if n > 1 else 0.0
+            ang = np.pi / 4 + 2 * np.pi * np.arange(n) / n
+            rel = ring * np.column_stack([np.cos(ang), np.sin(ang)])
+        ft = np.asarray(cfg.final_xy, float)[None, :] + rel
         self.final_targets = np.clip(ft, 2.0, cfg.area - 2.0)
         # building block hull: open-field devices are placed outside it
         if len(self.boxes):
@@ -192,6 +247,8 @@ class RISUAVEnv:
                     # head home at the speed that arrives exactly at the end (capped at v_max)
                     a[k] = to / d * min(1.0, d / (cfg.v_max * max(tl_now, cfg.dt)))
                     overridden[k] = True
+            if overridden.any():   # the autopilot also keeps the minimum separation
+                a = separate(self, a, adjust=overridden)
             self.ep["rth_slots"] += int(overridden.sum())
 
         # kinematics: velocity changes linearly within the slot (acceleration-limited)
