@@ -110,6 +110,7 @@ class PPOConfig:
     vf_coef: float = 0.5
     max_grad: float = 0.5
     episodes_per_update: int = 8
+    lr_anneal: bool = False       # linearly decay both learning rates to 10 % over training
 
 
 def ppo_update(actor: Actor, critic: Critic, opt_a, opt_c, batch: dict, pc: PPOConfig,

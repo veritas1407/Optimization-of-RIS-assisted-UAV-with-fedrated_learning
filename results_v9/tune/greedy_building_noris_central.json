@@ -1,0 +1,184 @@
+{
+  "target": "building_noris",
+  "centralized": true,
+  "params": {
+    "margin": 1.15,
+    "vcap": 15.0,
+    "need_w": 1.0,
+    "dscale": 300.0,
+    "inactive_w": 0.1,
+    "orbit_r": 5.0
+  },
+  "val": {
+    "ee": 7832.580675356317,
+    "reached_final": 1.0,
+    "collisions": 6.875,
+    "delivered_frac": 0.6829612618868999
+  },
+  "val_default_params": {
+    "ee": 6693.302596141238,
+    "reached_final": 1.0,
+    "collisions": 11.75,
+    "delivered_frac": 0.6168086747381047
+  },
+  "n_candidates": 150,
+  "n_val_stage1": 20,
+  "n_val_stage2": 80,
+  "seconds": 47.366708517074585,
+  "stage2": [
+    {
+      "params": {
+        "margin": 0.95,
+        "vcap": 15.0,
+        "need_w": 1.0,
+        "dscale": 150.0,
+        "inactive_w": 0.25,
+        "orbit_r": 25.0
+      },
+      "ee": 7737.66088558583,
+      "reached_final": 1.0,
+      "collisions": 6.2,
+      "delivered_frac": 0.6711969166918674
+    },
+    {
+      "params": {
+        "margin": 1.15,
+        "vcap": 15.0,
+        "need_w": 1.0,
+        "dscale": 300.0,
+        "inactive_w": 0.1,
+        "orbit_r": 5.0
+      },
+      "ee": 7832.580675356317,
+      "reached_final": 1.0,
+      "collisions": 6.875,
+      "delivered_frac": 0.6829612618868999
+    },
+    {
+      "params": {
+        "margin": 1.0,
+        "vcap": 12.0,
+        "need_w": 1.0,
+        "dscale": 1000.0,
+        "inactive_w": 0.5,
+        "orbit_r": 15.0
+      },
+      "ee": 7654.840633768111,
+      "reached_final": 1.0,
+      "collisions": 7.3875,
+      "delivered_frac": 0.6501512061231292
+    },
+    {
+      "params": {
+        "margin": 1.05,
+        "vcap": 15.0,
+        "need_w": 1.0,
+        "dscale": 600.0,
+        "inactive_w": 0.25,
+        "orbit_r": 10.0
+      },
+      "ee": 7813.251150570542,
+      "reached_final": 1.0,
+      "collisions": 6.8375,
+      "delivered_frac": 0.681047648912157
+    },
+    {
+      "params": {
+        "margin": 0.95,
+        "vcap": 12.0,
+        "need_w": 1.0,
+        "dscale": 150.0,
+        "inactive_w": 0.25,
+        "orbit_r": 10.0
+      },
+      "ee": 7593.47227397683,
+      "reached_final": 1.0,
+      "collisions": 6.4625,
+      "delivered_frac": 0.6508469087421268
+    },
+    {
+      "params": {
+        "margin": 1.0,
+        "vcap": 15.0,
+        "need_w": 1.0,
+        "dscale": 300.0,
+        "inactive_w": 0.5,
+        "orbit_r": 40.0
+      },
+      "ee": 7551.372051795585,
+      "reached_final": 1.0,
+      "collisions": 5.75,
+      "delivered_frac": 0.6531378570758726
+    },
+    {
+      "params": {
+        "margin": 1.15,
+        "vcap": 12.0,
+        "need_w": 1.0,
+        "dscale": 1000.0,
+        "inactive_w": 0.5,
+        "orbit_r": 25.0
+      },
+      "ee": 7548.225301921195,
+      "reached_final": 1.0,
+      "collisions": 7.0375,
+      "delivered_frac": 0.6392359991279095
+    },
+    {
+      "params": {
+        "margin": 1.05,
+        "vcap": 12.0,
+        "need_w": 1.0,
+        "dscale": 75.0,
+        "inactive_w": 0.25,
+        "orbit_r": 10.0
+      },
+      "ee": 7537.182347020731,
+      "reached_final": 1.0,
+      "collisions": 6.1,
+      "delivered_frac": 0.6490075126562651
+    },
+    {
+      "params": {
+        "margin": 0.95,
+        "vcap": 15.0,
+        "need_w": 1.0,
+        "dscale": 3000.0,
+        "inactive_w": 0.25,
+        "orbit_r": 5.0
+      },
+      "ee": 7529.248658908461,
+      "reached_final": 1.0,
+      "collisions": 8.225,
+      "delivered_frac": 0.6565835516413969
+    },
+    {
+      "params": {
+        "margin": 1.15,
+        "vcap": 15.0,
+        "need_w": 1.0,
+        "dscale": 3000.0,
+        "inactive_w": 0.5,
+        "orbit_r": 15.0
+      },
+      "ee": 7574.828511775678,
+      "reached_final": 1.0,
+      "collisions": 7.05,
+      "delivered_frac": 0.6601492476951105
+    },
+    {
+      "params": {
+        "margin": 1.15,
+        "vcap": 20.0,
+        "need_w": 0.35,
+        "dscale": 150.0,
+        "inactive_w": 0.5,
+        "orbit_r": 15.0
+      },
+      "ee": 6693.302596141238,
+      "reached_final": 1.0,
+      "collisions": 11.75,
+      "delivered_frac": 0.6168086747381047
+    }
+  ]
+}

@@ -1,0 +1,184 @@
+{
+  "target": "building_noris",
+  "centralized": false,
+  "params": {
+    "margin": 1.05,
+    "vcap": 15.0,
+    "need_w": 0.35,
+    "dscale": 3000.0,
+    "inactive_w": 0.1,
+    "orbit_r": 5.0
+  },
+  "val": {
+    "ee": 7064.8975048437815,
+    "reached_final": 1.0,
+    "collisions": 20.5,
+    "delivered_frac": 0.6177401350082153
+  },
+  "val_default_params": {
+    "ee": 6415.60515839595,
+    "reached_final": 1.0,
+    "collisions": 20.225,
+    "delivered_frac": 0.5852666320362848
+  },
+  "n_candidates": 150,
+  "n_val_stage1": 20,
+  "n_val_stage2": 80,
+  "seconds": 57.18956732749939,
+  "stage2": [
+    {
+      "params": {
+        "margin": 1.0,
+        "vcap": 15.0,
+        "need_w": 0.35,
+        "dscale": 1000.0,
+        "inactive_w": 0.1,
+        "orbit_r": 40.0
+      },
+      "ee": 6955.93836885948,
+      "reached_final": 1.0,
+      "collisions": 18.7375,
+      "delivered_frac": 0.6062460124643814
+    },
+    {
+      "params": {
+        "margin": 1.05,
+        "vcap": 15.0,
+        "need_w": 1.0,
+        "dscale": 600.0,
+        "inactive_w": 0.25,
+        "orbit_r": 10.0
+      },
+      "ee": 6931.936933970954,
+      "reached_final": 1.0,
+      "collisions": 23.825,
+      "delivered_frac": 0.6032952390938331
+    },
+    {
+      "params": {
+        "margin": 1.15,
+        "vcap": 15.0,
+        "need_w": 1.0,
+        "dscale": 300.0,
+        "inactive_w": 0.1,
+        "orbit_r": 5.0
+      },
+      "ee": 6935.841667693139,
+      "reached_final": 1.0,
+      "collisions": 20.4375,
+      "delivered_frac": 0.6050090207717623
+    },
+    {
+      "params": {
+        "margin": 0.95,
+        "vcap": 12.0,
+        "need_w": 0.6,
+        "dscale": 1000.0,
+        "inactive_w": 0.1,
+        "orbit_r": 25.0
+      },
+      "ee": 7040.187485125573,
+      "reached_final": 1.0,
+      "collisions": 19.5,
+      "delivered_frac": 0.6032075411562872
+    },
+    {
+      "params": {
+        "margin": 0.95,
+        "vcap": 15.0,
+        "need_w": 0.6,
+        "dscale": 600.0,
+        "inactive_w": 0.1,
+        "orbit_r": 40.0
+      },
+      "ee": 6954.376420351873,
+      "reached_final": 1.0,
+      "collisions": 18.375,
+      "delivered_frac": 0.6052499581420052
+    },
+    {
+      "params": {
+        "margin": 1.05,
+        "vcap": 12.0,
+        "need_w": 0.35,
+        "dscale": 600.0,
+        "inactive_w": 0.25,
+        "orbit_r": 25.0
+      },
+      "ee": 6913.084344615607,
+      "reached_final": 1.0,
+      "collisions": 19.8375,
+      "delivered_frac": 0.59348951471679
+    },
+    {
+      "params": {
+        "margin": 1.0,
+        "vcap": 15.0,
+        "need_w": 0.35,
+        "dscale": 150.0,
+        "inactive_w": 0.1,
+        "orbit_r": 25.0
+      },
+      "ee": 6972.381976621767,
+      "reached_final": 1.0,
+      "collisions": 19.25,
+      "delivered_frac": 0.609488070400481
+    },
+    {
+      "params": {
+        "margin": 0.95,
+        "vcap": 15.0,
+        "need_w": 1.0,
+        "dscale": 3000.0,
+        "inactive_w": 0.25,
+        "orbit_r": 5.0
+      },
+      "ee": 6877.972832394024,
+      "reached_final": 1.0,
+      "collisions": 23.725,
+      "delivered_frac": 0.5992766028835624
+    },
+    {
+      "params": {
+        "margin": 1.05,
+        "vcap": 15.0,
+        "need_w": 0.35,
+        "dscale": 3000.0,
+        "inactive_w": 0.1,
+        "orbit_r": 5.0
+      },
+      "ee": 7064.8975048437815,
+      "reached_final": 1.0,
+      "collisions": 20.5,
+      "delivered_frac": 0.6177401350082153
+    },
+    {
+      "params": {
+        "margin": 1.3,
+        "vcap": 15.0,
+        "need_w": 0.6,
+        "dscale": 150.0,
+        "inactive_w": 0.25,
+        "orbit_r": 5.0
+      },
+      "ee": 6880.694644996268,
+      "reached_final": 1.0,
+      "collisions": 19.4125,
+      "delivered_frac": 0.6042010240577268
+    },
+    {
+      "params": {
+        "margin": 1.15,
+        "vcap": 20.0,
+        "need_w": 0.35,
+        "dscale": 150.0,
+        "inactive_w": 0.5,
+        "orbit_r": 15.0
+      },
+      "ee": 6415.60515839595,
+      "reached_final": 1.0,
+      "collisions": 20.225,
+      "delivered_frac": 0.5852666320362848
+    }
+  ]
+}

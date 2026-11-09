@@ -19,6 +19,11 @@ from matplotlib.patches import Rectangle  # noqa: E402
 from .config import get_preset  # noqa: E402
 
 RESULTS = Path("results_v9")
+POLICY_ORDER = ["random", "straight", "greedy", "greedy_dec", "greedy_tuned"]
+POLICY_LABELS = {"random": "random", "straight": "straight line", "greedy": "greedy\n(untuned v9.0)",
+                 "greedy_dec": "greedy, decentral.\n(same info as RL)",
+                 "greedy_tuned": "greedy, central.\n(full info, tuned)"}
+ARB_COLORS = {"none": "C7", "random": "C1", "common": "C4", "timeshare": "C0"}
 plt.rcParams.update({"font.size": 10, "axes.grid": True, "grid.alpha": 0.3})
 
 
@@ -87,26 +92,28 @@ def plot_gate():
     plt.close(fig)
 
     rows = _read_csv(d / "baselines.csv")
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.5))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 4.8))
     for ax, preset, title in ((axes[0], "legacy_small", "Old 20 m scene (v8 / Jiang et al.)"),
                               (axes[1], "building", "New 500 m urban scene (v9)")):
         rs = [r for r in rows if r["preset"] == preset and r["arbitration"] in ("none", "random", "timeshare")]
-        pols = list(dict.fromkeys(r["policy"] for r in rs))
+        pols = [p for p in POLICY_ORDER if any(r["policy"] == p for r in rs)]
         arbs = ["none", "random", "timeshare"]
-        labels = {"none": "no RIS", "random": "random RIS phases", "timeshare": "aligned RIS"}
+        labels = {"none": "no RIS", "random": "random RIS phases", "timeshare": "aligned RIS (time-share)"}
         w = 0.26
         for j, arb in enumerate(arbs):
-            vals = [next(float(r["ee_mean"]) for r in rs if r["policy"] == p and r["arbitration"] == arb) for p in pols]
-            errs = [next(float(r["ee_std"]) for r in rs if r["policy"] == p and r["arbitration"] == arb) for p in pols]
-            ax.bar(np.arange(len(pols)) + (j - 1) * w, vals, w, yerr=errs, capsize=3, label=labels[arb])
+            sel = [next((r for r in rs if r["policy"] == p and r["arbitration"] == arb), None) for p in pols]
+            vals = [float(r["ee_mean"]) if r else np.nan for r in sel]
+            errs = [float(r["ee_ci95"]) if r else 0.0 for r in sel]
+            ax.bar(np.arange(len(pols)) + (j - 1) * w, vals, w, yerr=errs, capsize=3, label=labels[arb],
+                   color=ARB_COLORS[arb])
         ax.set_xticks(range(len(pols)))
-        ax.set_xticklabels(pols)
+        ax.set_xticklabels([POLICY_LABELS.get(p, p) for p in pols], fontsize=8)
         ax.set_ylabel("energy efficiency (bit/J)")
         ax.set_title(title)
-        lo = min(float(r["ee_mean"]) for r in rs)
-        ax.set_ylim(lo * 0.8, None)
+        ax.set_ylim(0, None)
         ax.legend(fontsize=8)
-    fig.suptitle("Does the RIS matter? Baseline flight policies, mean ± std over 20 held-out episodes")
+    n = rows[0].get("n", "?")
+    fig.suptitle(f"Does the RIS matter? Baseline flight policies, mean ± 95 % CI over {n} test episodes")
     fig.savefig(d / "fig_old_vs_new.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     print("gate figures written to", d)
@@ -132,21 +139,43 @@ def _runs(preset):
     return out
 
 
+def _gate_episodes(key):
+    f = RESULTS / "gate" / "baselines_per_episode.npz"
+    if not f.exists():
+        return None
+    d = np.load(f)
+    return d[key] if key in d else None
+
+
 def summarize(preset="building"):
+    """Per-method test results over training seeds: mean, std (ddof=1), 95 % CI over seeds, and
+    paired differences to the heuristics on the same 100 test episodes."""
     import json
+
+    from .stats import mean_ci
     rows = []
+    ref = {k: _gate_episodes(f"{preset}|{k}|timeshare") for k in ("greedy_tuned", "greedy_dec", "straight")}
     for tag, seeds in _runs(preset).items():
         tests = [json.loads((s / "test.json").read_text()) for s in seeds]
         row = {"method": tag, "n_seeds": len(tests)}
         for k in ("ee", "delivered_frac", "shadow_delivered_frac", "energy", "reached_final",
                   "collisions", "comm_MB"):
-            vals = np.array([t[k] for t in tests], float)
-            row[f"{k}_mean"], row[f"{k}_std"] = float(np.mean(vals)), float(np.std(vals))
+            st = mean_ci([t[k] for t in tests])
+            row[f"{k}_mean"], row[f"{k}_std"], row[f"{k}_ci95"] = st["mean"], st["std"], st["ci95"]
+        for name, base in ref.items():
+            if base is None or "ee_per_episode" not in tests[0]:
+                continue
+            # per seed: mean over the same test episodes of (method - heuristic); CI over seeds
+            d = [np.mean(np.asarray(t["ee_per_episode"]) - base[:len(t["ee_per_episode"])]) for t in tests]
+            st = mean_ci(d)
+            row[f"vs_{name}_mean"], row[f"vs_{name}_ci95"] = st["mean"], st["ci95"]
+            row[f"vs_{name}_pct"] = 100.0 * st["mean"] / float(np.mean(base))
         rows.append(row)
     if rows:
         out = RESULTS / "train" / preset / "summary.csv"
+        keys = list(dict.fromkeys(k for r in rows for k in r))
         with out.open("w", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=list(rows[0]))
+            w = csv.DictWriter(f, fieldnames=keys)
             w.writeheader()
             w.writerows(rows)
     return rows
@@ -157,8 +186,11 @@ def _baseline_ee(preset):
     if not path.exists():
         return {}
     rs = [r for r in _read_csv(path) if r["preset"] == preset]
-    pick = {("straight", "timeshare"): "straight line + RIS", ("greedy", "none"): "greedy, no RIS",
-            ("greedy", "timeshare"): "greedy + RIS"}
+    arb = "none" if preset == "building_noris" else "timeshare"
+    if preset == "building_noris":
+        rs = [r for r in _read_csv(path) if r["preset"] == "building"]
+    pick = {("straight", arb): "straight line", ("greedy_dec", arb): "greedy, decentralized (same info)",
+            ("greedy_tuned", arb): "greedy, centralized (full info, tuned)"}
     return {pick[(r["policy"], r["arbitration"])]: float(r["ee_mean"]) for r in rs
             if (r["policy"], r["arbitration"]) in pick}
 
@@ -185,7 +217,8 @@ def plot_train(preset="building"):
         ax.axhline(v, color="k", ls=ls, lw=1, label=f"baseline: {name}")
     ax.set_xlabel("training episode")
     ax.set_ylabel("validation EE (bit/J)")
-    ax.set_title(f"Learning curves ({preset} scene), mean ± std over seeds")
+    ax.set_ylim(0, None)
+    ax.set_title(f"Learning curves ({preset} scene); line = mean, band = ± 1 std over seeds")
     ax.legend(fontsize=8)
     fig.savefig(out / "fig_learning_curves.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -194,7 +227,7 @@ def plot_train(preset="building"):
     floor = 1e-1
     for r in rows:
         x = max(r["comm_MB_mean"], floor)
-        ax.errorbar(x, r["ee_mean"], yerr=r["ee_std"], fmt="o", ms=8, capsize=4,
+        ax.errorbar(x, r["ee_mean"], yerr=r["ee_ci95"], fmt="o", ms=8, capsize=4,
                     label=LABELS.get(r["method"], r["method"]))
         ax.annotate(f"{r['comm_MB_mean']:.0f} MB" if r["comm_MB_mean"] >= 1 else "0 MB",
                     (x, r["ee_mean"]), textcoords="offset points", xytext=(6, 6), fontsize=8)
@@ -202,13 +235,13 @@ def plot_train(preset="building"):
         ax.axhline(v, color="k", ls=ls, lw=1, label=f"baseline: {name}")
     ax.set_xscale("log")
     ax.set_xlabel("training communication (MB, log scale; IPPO plotted at 0.1)")
-    ax.set_ylabel("test EE (bit/J)")
+    ax.set_ylabel("test EE (bit/J), mean ± 95 % CI over seeds")
     ax.set_title("Energy efficiency vs. communication cost of training")
     ax.legend(fontsize=8, loc="center left", bbox_to_anchor=(1.01, 0.5))
     fig.savefig(out / "fig_ee_vs_comm.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     for r in rows:
-        print(f"  {r['method']:12s} seeds={r['n_seeds']}  EE {r['ee_mean']:7.0f} ± {r['ee_std']:5.0f}  "
+        print(f"  {r['method']:12s} seeds={r['n_seeds']}  EE {r['ee_mean']:7.0f} ± {r['ee_ci95']:5.0f} (95% CI)  "
               f"delivered {r['delivered_frac_mean']:.2f}  final {r['reached_final_mean']:.2f}  "
               f"comm {r['comm_MB_mean']:8.1f} MB")
 
@@ -255,11 +288,17 @@ def plot_multiarea():
         return
     order = [k for k in ("local", "fedavg_E4", "fedavg_E4_both", "pooled") if k in runs] + \
             [k for k in runs if k not in MA_LABELS]
+    from .stats import mean_ci
     rows = []
     for tag in order:
         ts = [json.loads((s / "test.json").read_text()) for s in runs[tag]]
-        ee = np.array([t["test_ee"] for t in ts])
-        rows.append({"method": tag, "n_seeds": len(ts), "test_ee_mean": ee.mean(), "test_ee_std": ee.std(),
+        st = mean_ci([t["test_ee"] for t in ts])
+        rows.append({"method": tag, "n_seeds": len(ts), "test_ee_mean": st["mean"], "test_ee_std": st["std"],
+                     "test_ee_ci95": st["ci95"],
+                     # local: the 4 area models differ; mean over seeds of their spread (ddof=1)
+                     "local_model_spread_std": (np.mean([t["test_ee_across_models_std"] for t in ts])
+                                                if tag == "local" else np.nan),
+                     "comm_intra_MB_mean": np.mean([t.get("comm_intra_MB", np.nan) for t in ts]),
                      "test_delivered_mean": np.mean([t["test_delivered"] for t in ts]),
                      "test_reached_mean": np.mean([t["test_reached"] for t in ts]),
                      "comm_MB_mean": np.mean([t["comm_MB"] for t in ts]),
@@ -277,23 +316,23 @@ def plot_multiarea():
 
     fig, ax = plt.subplots(figsize=(10, 5))
     x = np.arange(len(rows))
-    bars = ax.bar(x, [r["test_ee_mean"] for r in rows], yerr=[r["test_ee_std"] for r in rows], capsize=5,
+    bars = ax.bar(x, [r["test_ee_mean"] for r in rows], yerr=[r["test_ee_ci95"] for r in rows], capsize=5,
                   color=["C7" if r["method"] == "local" else "C2" if r["method"].startswith("fed") else "C0"
                          for r in rows])
     for b, r in zip(bars, rows):
-        ax.annotate(f"{r['test_ee_mean']:.0f}\ncomm {r['comm_MB_mean']:.0f} MB", (b.get_x() + b.get_width() / 2,
-                    b.get_height() + r["test_ee_std"]), textcoords="offset points", xytext=(0, 4),
-                    ha="center", va="bottom", fontsize=8)
-    names = {("greedy", "timeshare"): "greedy + RIS", ("straight", "timeshare"): "straight + RIS",
-             ("greedy", "none"): "greedy, no RIS"}
+        ax.annotate(f"{r['test_ee_mean']:.0f}\ncross-area {r['comm_MB_mean']:.0f} MB",
+                    (b.get_x() + b.get_width() / 2, b.get_height() + r["test_ee_ci95"]),
+                    textcoords="offset points", xytext=(0, 4), ha="center", va="bottom", fontsize=8)
+    names = {("greedy_tuned", "timeshare"): "greedy, central. (full info, tuned) + RIS",
+             ("greedy_dec", "timeshare"): "greedy, decentral. (same info) + RIS",
+             ("straight", "timeshare"): "straight + RIS"}
     for (k, v), ls in zip([(k, base[k]) for k in names if k in base], ["--", ":", "-."]):
         ax.axhline(v, color="k", ls=ls, lw=1, label=f"heuristic: {names[k]}")
     ax.set_xticks(x)
     ax.set_xticklabels([MA_LABELS.get(r["method"], r["method"]) for r in rows], fontsize=9)
     ax.set_ylabel("EE on 8 never-seen city areas (bit/J)")
-    lo = min([r["test_ee_mean"] for r in rows] + list(base.values()) or [0])
-    ax.set_ylim(lo * 0.85, None)
-    ax.set_title("Generalization to unseen city areas (mean ± std over training seeds)")
+    ax.set_ylim(0, None)
+    ax.set_title("Generalization to unseen city areas (mean ± 95 % CI over training seeds)")
     ax.legend(fontsize=8, loc="lower right")
     fig.savefig(root / "fig_generalization.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
@@ -305,44 +344,51 @@ def plot_multiarea():
         xs = np.array([float(r["episodes_per_area"]) for r in logs[0][:n]])
         ys = np.array([[float(r["val_ee_mean"]) for r in lg[:n]] for lg in logs])
         ax.plot(xs, ys.mean(0), lw=2, label=MA_LABELS.get(tag, tag).replace("\n", " "))
-        ax.fill_between(xs, ys.mean(0) - ys.std(0), ys.mean(0) + ys.std(0), alpha=0.2)
+        ax.fill_between(xs, ys.mean(0) - ys.std(0, ddof=1), ys.mean(0) + ys.std(0, ddof=1), alpha=0.2)
     ax.set_xlabel("training episodes per area")
     ax.set_ylabel("EE on unseen validation areas (bit/J)")
-    ax.set_title("Learning curves, judged on areas never seen in training")
+    ax.set_ylim(0, None)
+    ax.set_title("Learning curves on never-seen validation areas (band = ± 1 std over seeds)")
     ax.legend(fontsize=8)
     fig.savefig(root / "fig_multiarea_curves.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
     for r in rows:
         own = f"  own-area {r['own_area_ee_mean']:.0f}" if not np.isnan(r["own_area_ee_mean"]) else ""
         print(f"  {r['method']:16s} seeds={r['n_seeds']}  unseen-area EE {r['test_ee_mean']:7.0f} ± "
-              f"{r['test_ee_std']:5.0f}  cross-area comm {r['comm_MB_mean']:7.1f} MB{own}")
+              f"{r['test_ee_ci95']:5.0f} (95% CI)  cross-area comm {r['comm_MB_mean']:7.1f} MB"
+              f"  intra-area {r['comm_intra_MB_mean']:7.1f} MB{own}")
 
 
 def plot_ris_value():
-    """No RIS vs building RIS vs aerial RIS, for the greedy heuristic and learned MAPPO."""
+    """No RIS vs building RIS vs aerial RIS, for the tuned heuristic and learned MAPPO."""
     import json
+
+    from .stats import mean_ci
     gate = _read_csv(RESULTS / "gate" / "baselines.csv") if (RESULTS / "gate" / "baselines.csv").exists() else []
 
     def heur(preset, arb):
-        r = [x for x in gate if x["preset"] == preset and x["policy"] == "greedy" and x["arbitration"] == arb]
-        return (float(r[0]["ee_mean"]), float(r[0]["ee_std"]), float(r[0]["energy_mean"])) if r else None
+        r = [x for x in gate if x["preset"] == preset and x["policy"] == "greedy_tuned" and x["arbitration"] == arb]
+        return (float(r[0]["ee_mean"]), float(r[0]["ee_ci95"]), float(r[0]["energy_mean"]), int(r[0]["n"])) \
+            if r else None
 
     def learned(preset):
         ts = [json.loads(p.read_text()) for p in sorted((RESULTS / "train" / preset / "ctde").glob("seed*/test.json"))]
         if not ts:
             return None
-        ee = [t["ee"] for t in ts]
-        return float(np.mean(ee)), float(np.std(ee)), float(np.mean([t["energy"] for t in ts])), len(ts)
+        st = mean_ci([t["ee"] for t in ts])
+        return st["mean"], st["ci95"] if len(ts) > 1 else 0.0, float(np.mean([t["energy"] for t in ts])), len(ts)
 
     cases = [("No RIS", heur("building", "none"), learned("building_noris")),
-             ("Building RIS\n(1 m², rooftop)", heur("building", "timeshare"), learned("building")),
+             ("Building RIS\n(rooftop, 16×16)", heur("building", "timeshare"), learned("building")),
              ("Aerial RIS\n(carried by a 4th UAV)", heur("aerial", "timeshare"), learned("aerial"))]
+    nh = next((c[1][3] for c in cases if c[1]), "?")
+    nl = next((c[2][3] for c in cases if c[2]), "?")
     fig, ax = plt.subplots(figsize=(9, 5))
     w = 0.38
-    for j, (lab, col) in enumerate((("greedy heuristic (± std over 20 test episodes)", "C7"),
-                                    ("learned MAPPO (± std over 3 training seeds)", "C0"))):
-        for i, (_, h, l) in enumerate(cases):
-            v = h if j == 0 else l
+    for j, (lab, col) in enumerate(((f"tuned centralized greedy (± 95 % CI, {nh} test episodes)", "C7"),
+                                    (f"learned MAPPO-CTDE (± 95 % CI, {nl} training seeds)", "C0"))):
+        for i, (_, h, lv) in enumerate(cases):
+            v = h if j == 0 else lv
             if v is None:
                 continue
             b = ax.bar(i + (j - 0.5) * w, v[0], w, yerr=v[1], capsize=4, color=col,
@@ -353,14 +399,14 @@ def plot_ris_value():
     ax.set_xticklabels([c[0] for c in cases])
     ax.set_ylabel("EE (bit/J)  [label: EE, total flight energy]")
     ax.set_title("Where should the RIS be? (aerial carrier's propulsion energy is charged)")
-    ax.set_ylim(3000, None)
-    ax.legend(fontsize=9)
+    ax.set_ylim(0, None)
+    ax.legend(fontsize=8, loc="lower right")
     out = RESULTS / "fig_ris_value.png"
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    for name, h, l in cases:
+    for name, h, lv in cases:
         print(f"  {name.splitlines()[0]:14s} heuristic {h[0] if h else float('nan'):7.0f}   "
-              f"learned {l[0] if l else float('nan'):7.0f}")
+              f"learned {lv[0] if lv else float('nan'):7.0f}")
 
 
 SWEEP_TITLES = {"ris_size": "RIS elements L", "phase_bits": "RIS phase bits (0 = continuous)",
@@ -369,6 +415,7 @@ SWEEP_TITLES = {"ris_size": "RIS elements L", "phase_bits": "RIS phase bits (0 =
 
 
 def plot_sweeps(preset="building"):
+    from .stats import mean_ci
     root = RESULTS / "sweeps" / preset
     files = sorted(root.glob("*.csv")) if root.exists() else []
     if not files:
@@ -381,14 +428,18 @@ def plot_sweeps(preset="building"):
         vals = list(dict.fromkeys(r["value"] for r in rows))
         cat = name == "arbitration"
         x = np.arange(len(vals)) if cat or name == "phase_bits" else np.array([float(v) for v in vals])
-        for i, pol in enumerate(dict.fromkeys(r["policy"] for r in rows)):
-            ys = [[float(r["ee"]) for r in rows if r["value"] == v and r["policy"] == pol] for v in vals]
-            mu = np.array([np.mean(y) for y in ys])
-            sd = np.array([np.std(y) for y in ys])
-            lab = LABELS.get(pol, pol)
+        pols = list(dict.fromkeys(r["policy"] for r in rows))
+        for i, pol in enumerate(pols):
+            sel = [[r for r in rows if r["value"] == v and r["policy"] == pol] for v in vals]
+            mu = np.array([np.mean([float(r["ee"]) for r in rs]) for rs in sel])
+            if len(sel[0]) > 1:      # learned: one row per training seed -> CI over seeds
+                sd = np.array([mean_ci([float(r["ee"]) for r in rs])["ci95"] for rs in sel])
+            else:                    # heuristic: CI over the test episodes
+                sd = np.array([float(rs[0].get("ee_ci95", 0.0) or 0.0) for rs in sel])
+            lab = LABELS.get(pol, POLICY_LABELS.get(pol, pol).replace("\n", " "))
             if cat:
-                w = 0.8 / 5
-                ax.bar(x + (i - 1.5) * w, mu, w, yerr=sd, capsize=2, label=lab)
+                w = 0.8 / len(pols)
+                ax.bar(x + (i - (len(pols) - 1) / 2) * w, mu, w, yerr=sd, capsize=2, label=lab)
             else:
                 ax.errorbar(x, mu, yerr=sd, marker="o", capsize=3, label=lab)
         if cat or name == "phase_bits":
@@ -396,11 +447,14 @@ def plot_sweeps(preset="building"):
             ax.set_xticklabels(["∞" if (name == "phase_bits" and v == "0") else v for v in vals])
         ax.set_xlabel(SWEEP_TITLES.get(name, name))
         ax.set_ylabel("EE (bit/J)")
+        ax.set_ylim(0, None)
         ax.set_title(SWEEP_TITLES.get(name, name))
         ax.legend(fontsize=7)
     for ax in axes.ravel()[len(files):]:
         ax.axis("off")
-    fig.suptitle("Sensitivity of trained policies (no retraining) and heuristics; 20 test episodes per point")
+    n = _read_csv(files[0])[0].get("n", "?")
+    fig.suptitle(f"Sensitivity of trained policies (no retraining) and heuristics; {n} test episodes per point; "
+                 "error bars: 95 % CI over training seeds (learned) or episodes (heuristics)")
     fig.tight_layout()
     fig.savefig(root / "fig_sweeps.png", dpi=150, bbox_inches="tight")
     plt.close(fig)

@@ -13,7 +13,9 @@ same environment, channels and seeds as the learned agents.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -23,6 +25,7 @@ TEST_SEED_BASE = 5_000_000       # fresh test set (v9.1): never used during deve
 OLD_TEST_SEED_BASE = 1_000_000   # v9.0 test seeds (reused during development)
 EVAL_SEED_BASE = TEST_SEED_BASE
 N_TEST = 100
+TUNED_DIR = Path("results_v9/tune")
 
 
 def _vel_to_action(v, v_max):
@@ -124,6 +127,14 @@ class Greedy:
 
 
 greedy_policy = Greedy()   # untuned defaults (the v9.0 heuristic)
+
+
+def tuned_greedy(target: str, centralized: bool = True) -> Greedy:
+    """Greedy with the parameters chosen by ``v9.tune`` on validation episodes for ``target``
+    (a preset name or "multiarea"); falls back to the defaults if no tuning file exists."""
+    f = TUNED_DIR / f"greedy_{target}_{'central' if centralized else 'decentral'}.json"
+    params = GreedyParams(**json.loads(f.read_text())["params"]) if f.exists() else GreedyParams()
+    return Greedy(params, centralized=centralized)
 
 POLICIES = {"random": random_policy, "straight": straight_policy, "greedy": greedy_policy}
 

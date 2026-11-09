@@ -114,6 +114,15 @@ class Learner:
             view.actors[a].load_state_dict(avg, strict=False)
         return view
 
+    def set_lr_frac(self, frac: float):
+        """Scale the learning rates to frac x their initial values (linear annealing)."""
+        pc = self.tc.ppo
+        opts_a = self.opt_a.values()
+        opts_c = [self.opt_c] if self.tc.algo == "ctde" else list(self.opt_c.values())
+        for opt, lr in [(o, pc.lr_actor) for o in opts_a] + [(o, pc.lr_critic) for o in opts_c]:
+            for g in opt.param_groups:
+                g["lr"] = lr * frac
+
     # ---------------------------------------------------------------- communication
     def bytes_per_step(self) -> float:
         if self.tc.algo != "ctde":
@@ -255,6 +264,8 @@ def train(cfg: ScenarioConfig, tc: TrainConfig, out_dir: Path, verbose: bool = T
         m = info["episode"]
         recent.append(m)
         if ep % tc.ppo.episodes_per_update == 0:
+            if tc.ppo.lr_anneal:
+                learner.set_lr_frac(max(0.1, 1.0 - (ep - 1) / tc.episodes))
             stats = learner.update(traj)
             traj = {k: [] for k in traj}
             row = {"episode": ep, "time_s": time.time() - t0, "lam": env.lam,

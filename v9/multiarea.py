@@ -155,6 +155,9 @@ def train_multiarea(mc: MultiAreaConfig, out_dir: Path, verbose: bool = True) ->
     for rnd in range(1, n_rounds + 1):
         ep_done = rnd * epu
         recent = []
+        if mc.ppo.lr_anneal:
+            for lr in learners:
+                lr.set_lr_frac(max(0.1, 1.0 - (rnd - 1) / n_rounds))
         if mc.mode == "pooled":
             # same total experience per round as the per-area learners, one update per round
             base = TRAIN_SEED_BASE * (mc.seed + 1) + 9_000_000
