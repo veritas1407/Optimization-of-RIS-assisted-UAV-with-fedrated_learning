@@ -1,0 +1,47 @@
+{
+  "mode": "local",
+  "episodes_per_area": 3000,
+  "E": 1,
+  "fed_parts": "actor",
+  "seed": 0,
+  "eval_every": 200,
+  "n_val_eps": 5,
+  "n_test_eps": 12,
+  "lam_rate": 0.1,
+  "train_areas": [
+    1,
+    2,
+    9,
+    5
+  ],
+  "val_areas": [
+    105,
+    101,
+    102,
+    103
+  ],
+  "test_areas": [
+    227,
+    237,
+    204,
+    206,
+    201,
+    211,
+    203,
+    207
+  ],
+  "ppo": {
+    "gamma": 0.99,
+    "lam": 0.95,
+    "clip": 0.2,
+    "epochs": 5,
+    "minibatch": 256,
+    "lr_actor": 0.0003,
+    "lr_critic": 0.001,
+    "ent_coef": 0.003,
+    "vf_coef": 0.5,
+    "max_grad": 0.5,
+    "episodes_per_update": 8,
+    "lr_anneal": true
+  }
+}
