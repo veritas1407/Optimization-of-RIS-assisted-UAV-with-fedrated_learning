@@ -1,7 +1,8 @@
 """Run a list of v9.run jobs in parallel (one process per job, one thread each).
 
-    python -m v9.launch pilots            # CTDE pilot runs that choose the training settings
-    python -m v9.launch pilots --seeds 0 --episodes 16 --dry-run
+    python -m v9.launch pilots --seeds 0 1          # CTDE pilots that chose the training settings
+    python -m v9.launch campaign --episodes 6000     # full 5-seed campaign (multi-area, presets, single)
+    python -m v9.launch single --seeds 0 --episodes 16 --dry-run
 """
 from __future__ import annotations
 
@@ -26,7 +27,65 @@ def pilots(seeds, episodes):
             for s in seeds for tag, extra in variants.items()]
 
 
-GROUPS = {"pilots": pilots}
+def pilots2(seeds, episodes):
+    # E: C (Dinkelbach + LR annealing) trained longer   F: E with a wider actor (256)
+    variants = {"ctde_pE": [], "ctde_pF": ["--hidden", "256"]}
+    return [(f"pilots/{tag}_s{s}", ["--exp", "train", "--skip-existing", "--preset", "building", "--algo", "ctde",
+                                    "--episodes", str(episodes), "--eval-every", "200", "--tag", tag,
+                                    "--seed", str(s), "--ppo", '{"lr_anneal": true}'] + extra)
+            for s in seeds for tag, extra in variants.items()]
+
+
+# settings locked from the pilots (validation only): Dinkelbach price + learning-rate annealing
+PPO = '{"lr_anneal": true}'
+METHODS = [("ctde", []), ("ippo", []), ("fedavg_E1", ["--algo", "fedavg", "--E", "1"]),
+           ("fedavg_E4", ["--algo", "fedavg", "--E", "4"]), ("fedavg_E16", ["--algo", "fedavg", "--E", "16"]),
+           ("fedprox_E4", ["--algo", "fedprox", "--E", "4", "--mu", "0.01"]),
+           ("fedper_E4", ["--algo", "fedper", "--E", "4"])]
+
+
+def _train(preset, tag, seed, episodes, extra):
+    algo = ["--algo", tag.split("_")[0]] if "--algo" not in extra else []
+    return (f"{preset}/{tag}_s{seed}", ["--exp", "train", "--skip-existing", "--preset", preset, "--tag", tag,
+                                         "--episodes", str(episodes), "--eval-every", "200", "--seed", str(seed),
+                                         "--ppo", PPO] + algo + extra)
+
+
+def single(seeds, episodes):
+    """All single-area methods on the building scene."""
+    return [_train("building", tag, s, episodes, extra) for s in seeds for tag, extra in METHODS]
+
+
+def presets(seeds, episodes):
+    """CTDE on the other RIS cases (no RIS, aerial RIS)."""
+    return [_train(p, "ctde", s, episodes, []) for p in ("aerial", "building_noris") for s in seeds]
+
+
+def multiarea(seeds, episodes_per_area):
+    modes = [("pooled", ["--mode", "pooled"]), ("fedavg_E4", ["--mode", "fedavg", "--E", "4"]),
+             ("fedavg_E4_both", ["--mode", "fedavg", "--E", "4", "--fed-parts", "both"]),
+             ("local", ["--mode", "local"])]
+    return [(f"multiarea/{tag}_s{s}", ["--exp", "multiarea", "--skip-existing", "--episodes", str(episodes_per_area),
+                                        "--seed", str(s), "--ppo", PPO] + extra)
+            for s in seeds for tag, extra in modes]
+
+
+def campaign(seeds, episodes, ma_episodes=3000):
+    """Everything, longest jobs first so the parallel slots drain evenly."""
+    return multiarea(seeds, ma_episodes) + presets(seeds, episodes) + single(seeds, episodes)
+
+
+def post(seeds, episodes):
+    """After training: heuristics on the unseen test areas, and the parameter sweeps (one job each)."""
+    from .run import SWEEPS
+    seed_arg = ",".join(str(s) for s in seeds)
+    return [("post/multiarea_baselines", ["--exp", "multiarea_baselines"])] + \
+        [(f"post/sweep_{n}", ["--exp", "sweep", "--sweep", n, "--tags", "ctde,ippo,fedavg_E4", "--seeds", seed_arg])
+         for n in SWEEPS]
+
+
+GROUPS = {"pilots": pilots, "pilots2": pilots2, "single": single, "presets": presets,
+          "multiarea": multiarea, "campaign": campaign, "post": post}
 
 
 def run(jobs, n_par: int, dry: bool):
@@ -50,7 +109,7 @@ def run(jobs, n_par: int, dry: bool):
 def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("group", choices=list(GROUPS))
-    p.add_argument("--seeds", type=int, nargs="*", default=[0, 1])
+    p.add_argument("--seeds", type=int, nargs="*", default=[0, 1, 2, 3, 4])
     p.add_argument("--episodes", type=int, default=4000)
     p.add_argument("--n-par", type=int, default=4)
     p.add_argument("--dry-run", action="store_true")

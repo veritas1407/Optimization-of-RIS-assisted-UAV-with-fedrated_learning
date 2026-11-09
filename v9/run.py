@@ -158,7 +158,7 @@ def exp_train(args):
     overrides = json.loads(args.scenario) if args.scenario else {}
     cfg = get_preset(args.preset, **overrides)
     tc = TrainConfig(algo=args.algo, episodes=args.episodes, E=args.E, mu=args.mu, seed=args.seed,
-                     lam_update=not args.fixed_lam, eval_every=args.eval_every,
+                     lam_update=not args.fixed_lam, eval_every=args.eval_every, hidden=args.hidden,
                      ppo=PPOConfig(**(json.loads(args.ppo) if args.ppo else {})))
     tag = args.tag or (f"{args.algo}" + (f"_E{args.E}" if args.algo.startswith("fed") else ""))
     out = RESULTS / "train" / args.preset / tag / f"seed{args.seed}"
@@ -185,16 +185,19 @@ def exp_multiarea(args):
 
 
 def load_policy(preset: str, tag: str, seed: int, cfg=None):
-    """Deterministic policy callable from a saved single-area checkpoint."""
+    """Deterministic policy callable from a saved single-area checkpoint (network sizes are
+    read from the run's config.json)."""
     import torch
 
     from .env import RISUAVEnv
     from .trainers import Learner, TrainConfig
 
-    algo = tag.split("_")[0]
+    run = RESULTS / "train" / preset / tag / f"seed{seed}"
+    tcfg = json.loads((run / "config.json").read_text())["train"]
     cfg = cfg or get_preset(preset)
-    learner = Learner(RISUAVEnv(cfg), TrainConfig(algo=algo))
-    learner.load_state_dict(torch.load(RESULTS / "train" / preset / tag / f"seed{seed}" / "best.pt"))
+    learner = Learner(RISUAVEnv(cfg), TrainConfig(algo=tcfg["algo"], hidden=tcfg["hidden"],
+                                                  critic_hidden_ctde=tcfg["critic_hidden_ctde"]))
+    learner.load_state_dict(torch.load(run / "best.pt"))
     return learner.policy
 
 
@@ -302,6 +305,7 @@ def main(argv=None):
     p.add_argument("--mu", type=float, default=0.01)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--eval-every", type=int, default=100)
+    p.add_argument("--hidden", type=int, default=128, help="actor (and local critic) hidden width")
     p.add_argument("--fixed-lam", action="store_true", help="keep the energy price fixed (no Dinkelbach)")
     p.add_argument("--scenario", default="", help="JSON dict of ScenarioConfig overrides")
     p.add_argument("--ppo", default="", help="JSON dict of PPOConfig overrides")

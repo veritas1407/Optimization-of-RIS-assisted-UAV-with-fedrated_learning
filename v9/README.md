@@ -20,16 +20,21 @@ from the 20 m toy scene to a 500 m urban scene where the RIS has a real job.
 ## Layout
 
 ```
-v9/config.py      scenario presets: building (main), aerial (RIS carried by a UAV), legacy_small (old scene)
-v9/physics.py     geometry, blockage, channels, RIS alignment/quantization, propulsion
+v9/config.py      scenario presets: building (main), building_noris, aerial (RIS carried by a UAV),
+                  legacy_small (old 20 m scene), random_area(seed) for multi-area FL
+v9/physics.py     geometry, blockage, channels, RIS element pattern + alignment/quantization, propulsion
 v9/env.py         RISUAVEnv: kinematics, energy, scheduling, RIS arbitration, reward, observations
-v9/baselines.py   random / straight-line / greedy policies + evaluation loop
+v9/baselines.py   random / straight-line / Greedy (centralized or decentralized) + evaluation loop
+v9/tune.py        tunes the Greedy heuristics on validation episodes
 v9/analysis.py    static link-budget analysis (coverage maps, upload-time table)
 v9/ppo.py         squashed-Gaussian actor, critic, GAE, PPO update (+ FedProx term)
-v9/trainers.py    ctde / ippo / fedavg / fedprox training loops, comm metering, checkpoints
-v9/run.py         CLI entry point
+v9/trainers.py    ctde / ippo / fedavg / fedprox / fedper training loops, comm metering, checkpoints
+v9/multiarea.py   multi-area hierarchical FL (local / fedavg / pooled)
+v9/stats.py       95 % confidence intervals, paired differences
+v9/run.py         CLI entry point for one experiment
+v9/launch.py      runs groups of experiments in parallel (pilots, campaign, post)
 v9/plots.py       figures from saved CSV/NPZ/JSON files only
-v9/tests/         unit tests (pytest)
+v9/tests/         unit and regression tests (pytest)
 ```
 
 ## Running
@@ -38,20 +43,24 @@ v9/tests/         unit tests (pytest)
 pip install -r requirements_v9.txt
 python -m pytest v9/tests -q
 
-# gate: coverage maps + baselines (≈ 30 s)
+python -m v9.tune --target building          # also building_noris, aerial, multiarea (≈ 1–2 min each)
 python -m v9.run --exp gate && python -m v9.plots gate
 
-# training (≈ 7 min per 2000-episode run on one CPU core)
-python -m v9.run --exp train --algo ctde    --seed 0
-python -m v9.run --exp train --algo ippo    --seed 0
-python -m v9.run --exp train --algo fedavg  --E 4 --seed 0
-python -m v9.run --exp train --algo fedprox --E 4 --mu 0.01 --seed 0
-python -m v9.plots train building
+# one run (≈ 12 min for 6000 episodes on one CPU core)
+python -m v9.run --exp train --algo ctde --episodes 6000 --ppo '{"lr_anneal": true}' --seed 0
+
+# the whole campaign, 4 runs in parallel (≈ 6 h on 4 cores), then sweeps and figures
+python -m v9.launch campaign --episodes 6000
+python -m v9.launch post
+python -m v9.plots train building; python -m v9.plots multiarea; python -m v9.plots ris_value
+python -m v9.plots sweeps building
 ```
 
-Results go to `results_v9/<exp>/…`. Seeds: training episodes use `10_000_000·(seed+1)+ep`,
-checkpoint selection uses validation seeds `2_000_000+j`, and every reported test number
-(learned and baseline) uses the same held-out test seeds `1_000_000+j`.
+Results go to `results_v9/<exp>/…` (v9.0 results are kept in `results_v9/archive_v9.0/`).
+Seeds: training episodes use `10_000_000·(seed+1)+ep`; checkpoint selection and heuristic
+tuning use validation seeds `2_000_000+j`; every reported test number (learned and
+heuristic) uses the same fresh test seeds `5_000_000+j` (100 episodes), which were not used
+during development.
 
 ## Gate results (building scene)
 
