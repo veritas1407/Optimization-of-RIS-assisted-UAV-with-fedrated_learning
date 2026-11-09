@@ -186,8 +186,36 @@ Differences of ~100 bit/J are within seed-to-seed noise. Locked: Dinkelbach + LR
 
 ## 7. Sensitivity sweeps (trained policies, no retraining)
 
-See `results_v9/sweeps/building/fig_sweeps.png` and the CSV files next to it. *(Filled in when
-the sweep jobs finish.)*
+(`results_v9/sweeps/building/fig_sweeps.png` and CSVs.) Policies trained on the default
+scene are flown in modified scenes on the same 100 test missions. Learned values are means
+over 5 seeds; heuristics keep their default-scene tuning.
+
+| Parameter | Values | Centralised greedy | Decentralised greedy | Straight | CTDE | IPPO | FedAvg E=4 |
+|---|---|---|---|---|---|---|---|
+| RIS elements L | 64 / 144 / **256** / 400 | 8096 / 8379 / 8675 / 8911 | 7512 / 7855 / 8199 / 8453 | 6192 / 6675 / 7065 / 7412 | 7421 / 7811 / 8119 / 8353 | 7327 / 7708 / 8027 / 8232 | 6891 / 7360 / 7742 / 8017 |
+| Phase bits | 1 / **2** / 3 / continuous | 8511 / 8675 / 8720 / 8706 | 7955 / 8199 / 8231 / 8239 | 6821 / 7065 / 7125 / 7149 | 7948 / 8119 / 8179 / 8180 | 7831 / 8027 / 8059 / 8081 | 7516 / 7742 / 7781 / 7812 |
+| Phase error (std, °) | **0** / 10 / 20 / 40 | 8675 / 8684 / 8610 / 8548 | 8199 / 8201 / 8199 / 8059 | 7065 / 7055 / 7024 / 6890 | 8119 / 8110 / 8093 / 8007 | 8027 / 8023 / 7978 / 7857 | 7742 / 7729 / 7704 / 7578 |
+| Device power (dBm) | 0 / 5 / **10** / 15 / 20 | 5787 / 7199 / 8675 / 10048 / 11077 | 5270 / 6701 / 8199 / 9703 / 10828 | 4203 / 5600 / 7065 / 8629 / 10066 | 5314 / 6737 / 8119 / 9435 / 10435 | 5158 / 6568 / 8027 / 9377 / 10417 | 4957 / 6340 / 7742 / 9094 / 10199 |
+| Data per device (×) | 0.5 / **1** / 1.5 / 2 | 5852 / 8675 / 9224 / 9511 | 5772 / 8199 / 8671 / 8893 | 5488 / 7065 / 7497 / 7676 | 5472 / 8119 / 8609 / 8779 | 5461 / 8027 / 8463 / 8635 | 5388 / 7742 / 8235 / 8419 |
+| RIS setting | none / random / common / **timeshare** | 7698 / 7701 / 8689 / 8675 | 6850 / 6875 / 8234 / 8199 | 5616 / 5645 / 7061 / 7065 | 6548 / 6910 / 8150 / 8119 | 6626 / 6812 / 8071 / 8027 | 6049 / 6271 / 7761 / 7742 |
+
+(bold = default)
+
+**What this shows**
+- **Bigger RIS helps steadily** (CTDE +12.6 % from 64 to 400 elements); the ranking of the
+  methods never changes.
+- **2-bit phases are enough:** 1 bit costs 2–3.5 %, 3 bits or continuous add < 1 %.
+- **Robust to imperfect channel knowledge:** a 20° random phase error costs < 1 %, 40° about
+  1.4–2.5 %.
+- **Transmit power and data volume move everything together;** with half the data
+  (5–15 Mbit per device) all policies are within ~8 % of each other (the straight line even
+  edges out the learned policies, 5,488 vs 5,472 for CTDE) because there is little left to
+  compete for — scarcity is what makes trajectories matter, and policies trained for the
+  default data volume do not adapt to a much smaller one without retraining.
+- **A policy trained with the RIS, flown without it, does worse** (CTDE 6,548) than one
+  trained without the RIS (7,201): the learned behaviour relies on the RIS being there.
+- Apart from the half-data point, the ordering is the same everywhere: centralised greedy >
+  decentralised greedy ≈ CTDE ≳ IPPO > FedAvg (single area) > straight line.
 
 ---
 

@@ -1,6 +1,6 @@
 # The v9 project, explained from the ground up
 
-*Written 2026-11-09, while the final 5-seed training campaign is running. Everything here
+*Written 2026-11-09; Part 13 updated with the final 5-seed campaign results. Everything here
 describes the code on branch `claude/btp-project-analysis-425r7n` (package `v9/`). Numbers
 quoted are measured, not assumed; where a number will only exist after the campaign, this
 document says so.*
@@ -531,29 +531,45 @@ the area with it (`fig_coverage.png`). Upload time for 20 Mbit from a courtyard 
 Differences of ~100 bit/J are within seed-to-seed noise. **Locked configuration:** Dinkelbach
 price + LR annealing, 4000 training missions, 8 devices in view.
 
-### 13.3 What this already tells us (honest reading)
+### 13.3 Final campaign results (all 65 runs, 5 seeds each)
 
-On validation, the learned drones (~8100–8250) are at the level of the **decentralised**
-greedy (~8180), and about 5 % below the **centralised, full-information** greedy (~8620).
-Giving each drone more devices in view, more training or a bigger network did not close that
-gap. The likely reason: the centralised rule has information and coordination (joint
-assignment of drones to devices) that decentralised drones do not. The final numbers come from
-the campaign (13.4).
+Full tables: [`docs/v9_results.md`](v9_results.md). The short version:
 
-### 13.4 What the running campaign will answer
+**Single area (building RIS), test EE in bit/J, 95 % CI over 5 seeds:**
 
-`python -m v9.launch campaign --episodes 4000` — 65 training runs, 4 in parallel:
-1. **Single area, 7 methods × 5 seeds:** CTDE, IPPO, FedAvg (E = 1, 4, 16), FedProx, FedPer →
-   EE vs training communication; how close FL gets to CTDE.
-2. **RIS placement, CTDE × 5 seeds:** no RIS / building RIS / aerial RIS → does the RIS still
-   pay off when the flight is learned?
-3. **Multi-area FL, 4 modes × 5 seeds:** local / FedAvg (actor) / FedAvg (actor + critic) /
-   pooled → generalisation to 8 unseen areas vs cross-area traffic.
-Then `python -m v9.launch post`: parameter sweeps (RIS size, phase bits, phase error, transmit
-power, data size, arbitration) with the trained policies (no retraining), and heuristics on
-the unseen areas.
+| Method | EE | vs decentralised greedy (8,199) | vs centralised greedy (8,675) | Training traffic |
+|---|---|---|---|---|
+| MAPPO-CTDE | 8,119 ± 61 | −1.0 % (level) | −6.4 % | 375 MB |
+| IPPO | 8,027 ± 262 | −2.1 % | −7.5 % | 0 |
+| FedPer (E = 4) | 7,989 ± 113 | −2.6 % | −7.9 % | 176 MB |
+| FedAvg E = 1 / 4 / 16 | 7,829 / 7,742 / 7,647 | −4.5 / −5.6 / −6.7 % | −9.7 / −10.8 / −11.8 % | 708 / 177 / 44 MB |
+| FedProx (E = 4) | 7,827 ± 115 | −4.5 % | −9.8 % | 177 MB |
+| straight line (heuristic) | 7,065 | | | |
 
----
+**Multi-area FL, EE on 8 unseen city areas:** local 7,581 ± 115 → **FedAvg (actors)
+7,953 ± 62** (88 MB cross-area) → pooled raw data 8,162 ± 59 (771 MB). FedAvg beats local in
+all 5 seeds (+4.9 %) and recovers 64 % of pooling's gain with 8.8× less traffic. Averaging the
+critics too: +0.2 % for 5.8× the traffic.
+
+**RIS placement under learned flight (CTDE):** no RIS 7,201 → building RIS 8,119
+(+12.8 %) → aerial RIS 5,070 (−37.6 % vs building).
+
+**Sweeps:** 2-bit phases are enough (1 bit −2 to −3.5 %); 20° phase error costs < 1 %; a
+bigger RIS helps steadily (64 → 400 elements: +12.6 % for CTDE).
+
+### 13.4 The honest reading (what to say in the presentation)
+
+1. The new scenario makes the RIS matter (+13–26 %), and the old one could not (+0.5 %).
+2. A building-mounted RIS is far better than a UAV-carried one once the carrier's energy is
+   counted.
+3. The learned trajectories beat straight flight clearly and match a carefully tuned
+   heuristic with the same information. They do not beat a centralised planner that sees
+   everything; more training, a wider network or more devices in view did not change that
+   (pilots, 13.2).
+4. Federated learning's value here is **generalisation across areas without sharing raw
+   data**, not better performance inside one area: inside one area averaging three UAVs'
+   models costs a little; across areas, FedAvg clearly beats training each area alone at a
+   small fraction of pooling's traffic.
 
 ## Part 14 — Limitations (say these before an examiner does)
 

@@ -62,27 +62,25 @@ tuning use validation seeds `2_000_000+j`; every reported test number (learned a
 heuristic) uses the same fresh test seeds `5_000_000+j` (100 episodes), which were not used
 during development.
 
-## Gate results (building scene)
+## Results (v9.1, 5 seeds, 100 fresh test missions, 95 % CIs)
 
-* A shadowed device can upload its 20 Mbit batch within its 30 s window from **3.4 %** of
-  the area without the RIS and from **33 %** with the RIS (`results_v9/gate/fig_coverage.png`).
-* The aligned RIS raises EE by 11–16 % for every baseline flight policy; random RIS phases
-  give nothing. In the old 20 m scene all three RIS settings give identical EE
-  (`fig_old_vs_new.png`) — the old scene could not show the RIS's value.
-* Aerial RIS (panel carried by a 4th UAV at 100 m) currently lowers EE: its propulsion
-  energy (+37 % of fleet energy) outweighs its gain for the baseline policies.
+Full tables, figures and discussion: [`docs/v9_results.md`](../docs/v9_results.md);
+ground-up explanation: [`docs/v9_explained.md`](../docs/v9_explained.md). Headlines:
 
-## Results
-
-The full results — single-area learning, multi-area federated learning, RIS placement
-(no / building / aerial) and parameter sweeps — with numbers, figure paths and stated
-limitations are in [`docs/v9_results.md`](../docs/v9_results.md). Headline numbers:
-
-* Learned MAPPO 8,049 bit/J vs greedy + RIS 7,724 vs straight + RIS 6,535 (single area).
-* Across city areas, FedAvg generalizes to 8 unseen areas as well as pooling all raw data
-  (7,542 vs 7,538) with 13x less traffic, and beats local-only training (7,301).
-* The building RIS adds +8.2 % EE even under learned flight; the UAV-carried RIS lowers
-  EE (5,354) because its carrier adds 40 % flight energy.
+* **The RIS matters in the new scene, not in the old one.** Building RIS: +25.8 % EE for
+  straight flight, +13.8–14.7 % for tuned heuristics, +12.8 % under learned flight; the
+  old 20 m scene: +0.5 %. A courtyard device can finish its upload from 3.4 % of the area
+  without the RIS and 90 % with it.
+* **Aerial (UAV-carried) RIS: −37.6 %** vs the building RIS, because the carrier adds
+  ~41 % flight energy.
+* **Learned vs heuristics (single area):** MAPPO-CTDE 8,119 ± 61 bit/J — +14.9 % over the
+  straight line, level with a tuned decentralised heuristic with the same information
+  (−1.0 ± 1.0 %), 6.4 % below a centralised full-information heuristic.
+* **FL inside one area** (3 UAVs) does not help: FedAvg/FedProx 7,647–7,829, FedPer 7,989,
+  IPPO 8,027.
+* **FL across city areas** (generalisation to 8 unseen areas): FedAvg 7,953 ± 62 vs local
+  7,581 ± 115 (+4.9 %, all 5 seeds) vs pooled raw data 8,162 ± 59; FedAvg recovers 64 % of
+  the pooling gain with 8.8× less cross-area traffic and no raw data leaving an area.
 
 ## Known limitations
 
@@ -90,4 +88,4 @@ Perfect CSI at the RIS controller; buildings are boxes with a fixed +20 dB block
 fixed altitude; Shannon rates; only propulsion energy counted (RIS-carrier scaled by a
 payload factor); data size, bandwidth and receivers per UAV are design choices within
 realistic ranges; FL is simulated on one machine (it fixes what is exchanged, not real
-hardware); 3 seeds per method.
+hardware); the heuristic references were tuned per scenario; 5 seeds per method.
