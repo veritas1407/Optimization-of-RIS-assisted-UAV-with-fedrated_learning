@@ -1,9 +1,15 @@
-"""RIS-assisted multi-UAV IoT data-collection environment (v9).
+"""RIS-assisted multi-UAV IoT data-collection environment (v9.1).
 
 One episode = one mission of M slots. Agents are the K collector UAVs plus, in the
 aerial preset, one UAV carrying the RIS. Each agent outputs a 2-D velocity command in
 [-1, 1]^2. The environment owns everything else: kinematics, energy, channels,
 device scheduling, and the closed-form RIS configuration (one physical RIS, shared).
+
+v9.1 changes (audit, docs/analysis/06-v9-audit.md): composite-Simpson propulsion energy,
+links evaluated at the mid-slot position, velocity zeroed at the area boundary, 3-D
+collision push, landing slots inside the area, open devices kept out of the building
+block, a separate random stream for RIS phase errors / random phases, aimed aerial panel,
+configurable number of observed devices and served-last-slot flags in the observation.
 """
 from __future__ import annotations
 
@@ -12,8 +18,7 @@ import numpy as np
 from . import physics as ph
 from .config import ScenarioConfig
 
-TOP_K = 5
-DEV_FEATS = 8
+DEV_FEATS = 10
 MAX_RIS_CONFIGS = 8
 
 
@@ -22,15 +27,14 @@ class RISUAVEnv:
         self.set_scenario(cfg)
         self.lam = float(cfg.lam_init)
         self.agent_id = cfg.agent_id_obs
-        self.obs_dim = (5 + 3 + 2 * (self.n_agents - 1) + 2 + TOP_K * DEV_FEATS + 2
+        self.top_k = cfg.top_k
+        self.obs_dim = (5 + 3 + 2 * (self.n_agents - 1) + 2 + self.top_k * DEV_FEATS + 2
                         + (self.n_agents if self.agent_id else 0))
         self.state_dim = self.obs_dim * self.n_agents
         self.act_dim = 2
         self.rng = np.random.default_rng(seed)
-        # one landing slot per agent inside the final zone, spread across the approach direction
-        offs = (np.arange(self.n_agents) - (self.n_agents - 1) / 2.0) * min(cfg.d_min * 1.2, cfg.r_final)
-        perp = np.array([1.0, -1.0]) / np.sqrt(2.0)
-        self.final_targets = np.asarray(cfg.final_xy, float)[None, :] + offs[:, None] * perp[None, :]
+        self.rng_ris = np.random.default_rng(seed + 7)
+        self.episode_seed = seed
 
     def set_scenario(self, cfg: ScenarioConfig):
         """(Re)load the scenario geometry. Used to switch city areas between episodes;
@@ -54,6 +58,17 @@ class RISUAVEnv:
             self.ris_center = np.asarray(cfg.ris.center, dtype=float)
             self.ris_elems = ph.ris_elements(self.ris_center, cfg.ris.normal,
                                              cfg.ris.ny, cfg.ris.nz, self.spacing)
+        # one landing slot per agent inside the final zone (kept inside the area)
+        offs = (np.arange(self.n_agents) - (self.n_agents - 1) / 2.0) * min(cfg.d_min * 1.2, cfg.r_final)
+        perp = np.array([1.0, -1.0]) / np.sqrt(2.0)
+        ft = np.asarray(cfg.final_xy, float)[None, :] + offs[:, None] * perp[None, :]
+        self.final_targets = np.clip(ft, 2.0, cfg.area - 2.0)
+        # building block hull: open-field devices are placed outside it
+        if len(self.boxes):
+            self.block_hull = np.array([self.boxes[:, 0].min(), self.boxes[:, 1].min(),
+                                        self.boxes[:, 3].max(), self.boxes[:, 4].max()])
+        else:
+            self.block_hull = None
 
     # ------------------------------------------------------------ episode setup
 
@@ -66,8 +81,11 @@ class RISUAVEnv:
             pts = []
             while len(pts) < cfg.n_open:
                 p = self.rng.uniform(10.0, cfg.area - 10.0, size=2)
-                if not ph.inside_any_box(p, self.boxes, margin=5.0)[0]:
-                    pts.append(p)
+                if self.block_hull is not None:
+                    x0, y0, x1, y1 = self.block_hull
+                    if x0 - 5.0 <= p[0] <= x1 + 5.0 and y0 - 5.0 <= p[1] <= y1 + 5.0:
+                        continue
+                pts.append(p)
             x0, y0, x1, y1 = cfg.shadow_region
             sh = np.column_stack([self.rng.uniform(x0, x1, cfg.n_shadow),
                                   self.rng.uniform(y0, y1, cfg.n_shadow)])
@@ -80,6 +98,10 @@ class RISUAVEnv:
         cfg = self.cfg
         if seed is not None:
             self.rng = np.random.default_rng(seed)
+            self.episode_seed = seed
+        # RIS phase errors / random phases get their own stream so that they never shift
+        # the fading draws (keeps comparisons between settings paired)
+        self.rng_ris = np.random.default_rng(int(self.rng.integers(2 ** 62)))
         self._place_devices()
         lo, hi = cfg.data_mbit
         self.data0 = self.rng.uniform(lo, hi, self.I) * 1e6
@@ -108,8 +130,9 @@ class RISUAVEnv:
                 self.rng, model="los")
 
         self.last_snr_db = np.zeros((self.I, self.K))
+        self.last_served = np.full(self.I, -1)
         self.blocked = ph.segments_blocked(self.dev[:, None, :], self.pos[None, :self.K, :], self.boxes)
-        self.ris_elig = self._ris_eligibility()
+        self.ris_elig = self._ris_eligibility(self.pos)
         self.phi = self._potentials()
         self.ep = {"bits": 0.0, "energy": 0.0, "collisions": 0, "bits_shadow": 0.0, "rth_slots": 0}
         obs = self._obs()
@@ -117,17 +140,24 @@ class RISUAVEnv:
 
     # ------------------------------------------------------------ helpers
 
-    def _ris_center_now(self):
+    def _ris_center(self, pos):
         if not self.use_ris:
             return None
-        return self.pos[self.K].copy() if self.aerial else self.ris_center
+        return pos[self.K].copy() if self.aerial else self.ris_center
 
-    def _ris_eligibility(self):
+    def _aerial_normal(self, pos):
+        """Aerial panel on a gimbal: aimed between straight down and the collectors."""
+        c = pos[self.K]
+        to_uav = pos[: self.K].mean(axis=0) - c
+        n = np.array([0.0, 0.0, -1.0]) + to_uav / max(np.linalg.norm(to_uav), 1e-6)
+        return n / np.linalg.norm(n)
+
+    def _ris_eligibility(self, pos):
         if not self.use_ris:
             return np.zeros(self.I, bool)
         if not self.aerial:
             return self.elig_static.copy()
-        return ~ph.segments_blocked(self.dev, self.pos[self.K][None, :], self.boxes)
+        return ~ph.segments_blocked(self.dev, pos[self.K][None, :], self.boxes)
 
     def _time_left(self, slot=None):
         slot = self.slot if slot is None else slot
@@ -164,23 +194,34 @@ class RISUAVEnv:
                     overridden[k] = True
             self.ep["rth_slots"] += int(overridden.sum())
 
-        # kinematics with acceleration and speed limits
+        # kinematics: velocity changes linearly within the slot (acceleration-limited)
+        v0 = self.vel
         v_cmd = a * cfg.v_max
-        dv = v_cmd - self.vel
+        dv = v_cmd - v0
         dv_n = np.linalg.norm(dv, axis=1, keepdims=True)
         dv = dv * np.minimum(1.0, cfg.a_max * cfg.dt / np.maximum(dv_n, 1e-9))
-        v_new = self.vel + dv
-        sp = np.linalg.norm(v_new, axis=1, keepdims=True)
-        v_new = v_new * np.minimum(1.0, cfg.v_max / np.maximum(sp, 1e-9))
-        self.pos[:, :2] = np.clip(self.pos[:, :2] + 0.5 * (self.vel + v_new) * cfg.dt, 0.0, cfg.area)
-        p_old = ph.propulsion_power(np.linalg.norm(self.vel, axis=1), cfg)
-        p_new = ph.propulsion_power(np.linalg.norm(v_new, axis=1), cfg)
-        energy = 0.5 * (p_old + p_new) * cfg.dt
+        v1 = v0 + dv
+        sp = np.linalg.norm(v1, axis=1, keepdims=True)
+        v1 = v1 * np.minimum(1.0, cfg.v_max / np.maximum(sp, 1e-9))
+        p0 = self.pos[:, :2].copy()
+        p_mid = p0 + (3.0 * v0 + v1) / 8.0 * cfg.dt          # position at t0 + dt/2
+        p_end = p0 + 0.5 * (v0 + v1) * cfg.dt
+        hit = (p_end < 0.0) | (p_end > cfg.area)
+        p_mid = np.clip(p_mid, 0.0, cfg.area)
+        p_end = np.clip(p_end, 0.0, cfg.area)
+        v1 = np.where(hit, 0.0, v1)                              # stopped by the boundary
+        # propulsion energy over the slot (composite Simpson on the linear velocity path)
+        energy = ph.slot_energy(v0, v1, cfg.dt, cfg)
         if self.aerial:
             energy[self.K] *= cfg.ris.payload_factor
-        self.vel = v_new
+        self.vel = v1
 
-        # collisions: counted before the safety projection
+        # links over the slot are evaluated at the mid-slot positions
+        pos_mid = self.pos.copy()
+        pos_mid[:, :2] = p_mid
+        self.pos[:, :2] = p_end
+
+        # collisions (3-D distance) counted before the safety projection
         n_coll = 0
         for i in range(self.n_agents):
             for j in range(i + 1, self.n_agents):
@@ -188,14 +229,20 @@ class RISUAVEnv:
                 dist = np.linalg.norm(diff)
                 if dist < cfg.d_min:
                     n_coll += 1
+                    dz = abs(diff[2])
+                    h_req = np.sqrt(max(cfg.d_min ** 2 - dz ** 2, 0.0))   # horizontal gap needed
                     dxy = diff[:2]
                     nxy = np.linalg.norm(dxy)
                     u = dxy / nxy if nxy > 1e-6 else np.array([1.0, 0.0])
-                    push = 0.5 * (cfg.d_min - dist)
+                    push = 0.5 * (h_req - nxy)
                     self.pos[i, :2] = np.clip(self.pos[i, :2] + u * push, 0.0, cfg.area)
                     self.pos[j, :2] = np.clip(self.pos[j, :2] - u * push, 0.0, cfg.area)
 
-        bits, served, ris_targets, eff_gain = self._communicate()
+        bits, served, ris_targets, eff_gain = self._communicate(pos_mid)
+        self.last_served = served
+        # geometric blockage seen from the new positions (for the next observation)
+        self.blocked = ph.segments_blocked(self.dev[:, None, :], self.pos[None, :self.K, :], self.boxes)
+        self.ris_elig = self._ris_eligibility(self.pos)
 
         self.slot += 1
         done = self.slot >= cfg.M
@@ -242,29 +289,29 @@ class RISUAVEnv:
 
     # ------------------------------------------------------------ communication
 
-    def _communicate(self):
+    def _communicate(self, pos):
         cfg = self.cfg
         t0 = (self.slot) * cfg.dt
         tmid = t0 + 0.5 * cfg.dt
-        uav = self.pos[: self.K]
-        h_d, blocked = ph.direct_channel(self.dev, uav, cfg, self.boxes, self.rng)
-        self.blocked = blocked
+        uav = pos[: self.K]
+        h_d, _ = ph.direct_channel(self.dev, uav, cfg, self.boxes, self.rng)
 
         if self.use_ris:
-            center = self._ris_center_now()
+            center = self._ris_center(pos)
             if self.aerial:
-                elems = ph.ris_elements(center, cfg.ris.normal, cfg.ris.ny, cfg.ris.nz, self.spacing)
-                h_ir, _ = ph.ris_side_channel(self.dev, elems, center, cfg.ris.normal, cfg,
+                normal = self._aerial_normal(pos)
+                elems = ph.ris_elements(center, normal, cfg.ris.ny, cfg.ris.nz, self.spacing)
+                h_ir, _ = ph.ris_side_channel(self.dev, elems, center, normal, cfg,
                                               self.boxes, self.rng, model="a2g")
             else:
+                normal = cfg.ris.normal
                 elems = self.ris_elems
                 h_ir = self.h_ir_static
-            h_ru, _ = ph.ris_side_channel(uav, elems, center, cfg.ris.normal, cfg,
+            h_ru, _ = ph.ris_side_channel(uav, elems, center, normal, cfg,
                                           self.boxes, self.rng, model="los")
         else:
             h_ir = np.zeros((self.I, 1), complex)
             h_ru = np.zeros((self.K, 1), complex)
-        self.ris_elig = self._ris_eligibility()
 
         g_dir = np.abs(h_d) ** 2
         if cfg.arbitration in ("timeshare", "common"):
@@ -298,7 +345,7 @@ class RISUAVEnv:
         if self.use_ris and cfg.arbitration != "none":
             idx = np.where(served >= 0)[0]
             if cfg.arbitration == "random":
-                thetas = self.rng.uniform(0.0, 2 * np.pi, (1, h_ir.shape[1]))
+                thetas = self.rng_ris.uniform(0.0, 2 * np.pi, (1, h_ir.shape[1]))
             else:
                 k_of = served[idx]
                 dep = idx[g_best[idx, k_of] > 2.0 * g_dir[idx, k_of]]
@@ -314,7 +361,7 @@ class RISUAVEnv:
                 if ris_targets:
                     thetas = np.stack([
                         ph.aligned_phases(h_d[i, k], h_ru[k], h_ir[i], cfg.ris.bits,
-                                          cfg.ris.phase_err_deg, self.rng)
+                                          cfg.ris.phase_err_deg, self.rng_ris)
                         for i, k in ris_targets])
         if thetas is None:
             gains = g_dir[None]
@@ -339,13 +386,14 @@ class RISUAVEnv:
         tl = self._time_left()
         t0 = self.slot * cfg.dt
         final = np.asarray(cfg.final_xy)
-        ris_c = self._ris_center_now()
+        ris_c = self._ris_center(self.pos)
         alive = (self.remaining > 1.0) & (self.win_end > t0)
         active = alive & (self.win_start <= t0)
         dmax = cfg.data_mbit[1] * 1e6
         tnorm = np.where(active, (self.win_end - t0) / max(cfg.window_s, cfg.dt),
                          np.where(alive, -(self.win_start - t0) / cfg.T, 0.0))
         tnorm = np.clip(np.nan_to_num(tnorm, posinf=1.0), -1.0, 1.0)
+        K = self.top_k
         obs = np.zeros((self.n_agents, self.obs_dim), dtype=np.float32)
         for a in range(self.n_agents):
             p = self.pos[a, :2]
@@ -370,14 +418,16 @@ class RISUAVEnv:
                 snr = self.last_snr_db[:, a]
                 key = dist + 0.3 * (~active)
             key = np.where(alive, key, np.inf)
-            top = np.argsort(key)[:TOP_K]
-            dev_f = np.zeros((TOP_K, DEV_FEATS))
+            top = np.argsort(key)[:K]
+            dev_f = np.zeros((K, DEV_FEATS))
             for j, i in enumerate(top):
                 if not alive[i]:
                     continue
+                by_me = float(self.last_served[i] == a)
+                by_other = float(self.last_served[i] >= 0 and self.last_served[i] != a)
                 dev_f[j] = [rel[i, 0], rel[i, 1], self.remaining[i] / dmax, float(active[i]),
                             tnorm[i], float(blocked_me[i]), float(self.ris_elig[i]),
-                            np.clip(snr[i] / 50.0, -1.0, 1.0)]
+                            np.clip(snr[i] / 50.0, -1.0, 1.0), by_me, by_other]
             f += list(dev_f.ravel())
             f += [self.remaining.sum() / max(self.data0.sum(), 1.0), float(is_ris_agent)]
             if self.agent_id:   # lets a shared/averaged policy give each UAV its own role

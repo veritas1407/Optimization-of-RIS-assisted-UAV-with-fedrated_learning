@@ -54,6 +54,23 @@ def propulsion_power(v, cfg) -> np.ndarray:
     return blade + parasite + induced
 
 
+def slot_energy(v0, v1, dt: float, cfg, n: int = 8) -> np.ndarray:
+    """Propulsion energy (J) over one slot whose velocity changes linearly from v0 to v1.
+
+    v0, v1: (..., 2) horizontal velocity vectors. Composite Simpson's rule with n (even)
+    sub-intervals on the speed |v(t)| along the linear velocity path; P(v) is sharply
+    curved at low speed (induced power), so one Simpson panel is not accurate enough.
+    """
+    v0 = np.asarray(v0, dtype=float)
+    v1 = np.asarray(v1, dtype=float)
+    t = np.linspace(0.0, 1.0, n + 1)
+    w = np.ones(n + 1)
+    w[1:-1:2], w[2:-1:2] = 4.0, 2.0
+    vs = v0[..., None, :] + (v1 - v0)[..., None, :] * t[:, None]
+    p = propulsion_power(np.linalg.norm(vs, axis=-1), cfg)
+    return dt / (3.0 * n) * (p * w).sum(-1)
+
+
 def min_power_speed(cfg) -> tuple[float, float]:
     vs = np.linspace(0.0, cfg.v_max, 2001)
     p = propulsion_power(vs, cfg)
@@ -190,7 +207,7 @@ def ris_side_channel(points: np.ndarray, elems: np.ndarray, ris_center, ris_norm
     The LoS phase uses the exact distance to each element (spherical wavefront).
     """
     center = np.asarray(ris_center, dtype=float)
-    elig = in_front(points, center, ris_normal)
+    elig = in_front(points, center, ris_normal) if cfg.ris.halfspace else np.ones(len(points), bool)
     lam = wavelength(cfg.fc)
     d_el = np.linalg.norm(points[:, None, :] - elems[None, :, :], axis=-1)   # (N, L)
     los_phase = -2.0 * np.pi * d_el / lam
@@ -203,7 +220,25 @@ def ris_side_channel(points: np.ndarray, elems: np.ndarray, ris_center, ris_norm
     else:
         pl, kappa, _, _ = a2g_link_params(points, center[None, :], cfg, boxes)
     h = rician(pl[:, None], kappa[:, None], los_phase, cn(rng, d_el.shape))
+    h = h * np.sqrt(element_power_factor(points, center, ris_normal, cfg.ris))[:, None]
     return h * elig[:, None], elig
+
+
+def element_power_factor(points: np.ndarray, center, normal, ris) -> np.ndarray:
+    """Per-hop power factor of one RIS element relative to an isotropic point scatterer.
+
+    Tang et al. (TWC 2021) far-field model: the cascaded power of one element is the
+    product of the two free-space losses times pi * G * F(theta_in) * F(theta_out), with a
+    normalised element pattern F = cos^q and gain G = 2(q + 1). Splitting it equally over
+    the two hops gives sqrt(pi * G) * cos^q(theta) per hop.
+    """
+    if ris.elem_model == "point":
+        return np.ones(len(points))
+    n, _, _ = ris_frame(normal)
+    v = np.asarray(points, float) - np.asarray(center, float)
+    cos_t = np.clip((v @ n) / np.maximum(np.linalg.norm(v, axis=-1), 1e-9), 0.0, 1.0)
+    gain = 2.0 * (ris.elem_q + 1.0)
+    return np.sqrt(np.pi * gain) * cos_t ** ris.elem_q
 
 
 def aligned_phases(h_d: np.ndarray, h_ru: np.ndarray, h_ir: np.ndarray, bits: int,

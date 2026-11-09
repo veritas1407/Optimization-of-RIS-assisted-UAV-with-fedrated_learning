@@ -36,7 +36,8 @@ def test_training_areas_cover_all_layout_types():
     for s in TRAIN_AREAS:
         c = random_area(s)
         x, y, _ = c.ris.center
-        types.add(("NW" if y > x else "SE", "x" if c.ris.normal[0] == 0 else "y"))
+        x0, y0, x1, y1 = c.shadow_region
+        types.add(("NW" if y > x else "SE", "x" if (x1 - x0) > (y1 - y0) else "y"))
     assert len(types) == 4
 
 

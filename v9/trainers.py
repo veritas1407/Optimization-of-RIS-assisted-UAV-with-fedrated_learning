@@ -27,7 +27,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .baselines import EVAL_SEED_BASE, run_episode
+from .baselines import N_TEST, TEST_SEED_BASE, run_episode
 from .config import ScenarioConfig
 from .env import RISUAVEnv
 from .ppo import Actor, Critic, PPOConfig, RunningScale, gae, n_params, ppo_update
@@ -44,12 +44,12 @@ class TrainConfig:
     mu: float = 0.01              # FedProx proximal weight
     seed: int = 0
     eval_every: int = 100
-    n_val: int = 10
-    n_test: int = 20
+    n_val: int = 20
+    n_test: int = N_TEST
     hidden: int = 128
     critic_hidden_ctde: int = 256
-    lam_update: bool = False      # Dinkelbach: move the price toward the achieved EE
-    lam_rate: float = 0.3
+    lam_update: bool = True       # Dinkelbach: move the energy price toward the achieved EE
+    lam_rate: float = 0.1
     ppo: PPOConfig = field(default_factory=PPOConfig)
 
 
@@ -98,6 +98,21 @@ class Learner:
 
     def policy(self, env, obs):
         return self.act(obs, deterministic=True)[0]
+
+    def eval_view(self) -> "Learner":
+        """The model that is actually deployed. For FedAvg/FedProx this is the federated
+        (averaged) model, for FedPer the averaged shared layers with each client's own
+        heads -- not the client copies that drifted since the last aggregation."""
+        if self.tc.algo not in ("fedavg", "fedprox", "fedper"):
+            return self
+        view = copy.copy(self)
+        view.actors = {a: copy.deepcopy(m) for a, m in self.actors.items()}
+        sds = [self.actors[a].state_dict() for a in self.clients]
+        avg = {k: torch.stack([sd[k] for sd in sds]).mean(0) for k in sds[0]
+               if not (self.tc.algo == "fedper" and self._is_head("actor." + k))}
+        for a in self.clients:
+            view.actors[a].load_state_dict(avg, strict=False)
+        return view
 
     # ---------------------------------------------------------------- communication
     def bytes_per_step(self) -> float:
@@ -206,8 +221,10 @@ def evaluate_learner(learner: Learner, cfg: ScenarioConfig, n: int, seed_base: i
     env = RISUAVEnv(cfg)
     env.lam = lam
     rows = [run_episode(env, learner.policy, seed_base + j) for j in range(n)]
-    return {k: float(np.nanmean([r[k] for r in rows])) for k in rows[0]} | \
-           {k + "_std": float(np.nanstd([r[k] for r in rows])) for k in ("ee", "delivered_frac")}
+    out = {k: float(np.nanmean([r[k] for r in rows])) for k in rows[0]}
+    out |= {k + "_std": float(np.nanstd([r[k] for r in rows], ddof=1)) for k in ("ee", "delivered_frac")}
+    out["ee_per_episode"] = [float(r["ee"]) for r in rows]
+    return out
 
 
 def train(cfg: ScenarioConfig, tc: TrainConfig, out_dir: Path, verbose: bool = True) -> dict:
@@ -251,12 +268,14 @@ def train(cfg: ScenarioConfig, tc: TrainConfig, out_dir: Path, verbose: bool = T
                 env.lam = (1 - tc.lam_rate) * env.lam + tc.lam_rate * row["ee"]
             recent = []
         if ep % tc.eval_every == 0 or ep == tc.episodes:
-            ev = evaluate_learner(learner, cfg, tc.n_val, VAL_SEED_BASE, env.lam)
-            ev.update({"episode": ep, "comm_MB": learner.comm_bytes / 1e6})
+            view = learner.eval_view()
+            ev = evaluate_learner(view, cfg, tc.n_val, VAL_SEED_BASE, env.lam)
+            ev.pop("ee_per_episode", None)
+            ev.update({"episode": ep, "comm_MB": learner.comm_bytes / 1e6, "lam": env.lam})
             eval_rows.append(ev)
             key = (ev["reached_final"] >= 0.9, ev["ee"])
             if best_key is None or key > best_key:
-                best_key, best_state = key, copy.deepcopy(learner.state_dict())
+                best_key, best_state = key, copy.deepcopy(view.state_dict())
                 best_state["episode"] = ep
             if verbose:
                 print(f"  [{tc.algo} s{tc.seed}] ep {ep:5d}  val EE {ev['ee']:7.0f}  deliv {ev['delivered_frac']:.2f}"
@@ -265,7 +284,7 @@ def train(cfg: ScenarioConfig, tc: TrainConfig, out_dir: Path, verbose: bool = T
                       f"  ({time.time() - t0:5.0f}s)", flush=True)
     # final test on the same held-out seeds the baselines use
     learner.load_state_dict(best_state)
-    test = evaluate_learner(learner, cfg, tc.n_test, EVAL_SEED_BASE, env.lam)
+    test = evaluate_learner(learner, cfg, tc.n_test, TEST_SEED_BASE, env.lam)
     test.update({"best_episode": best_state["episode"], "comm_MB": learner.comm_bytes / 1e6,
                  "train_time_s": time.time() - t0, "algo": tc.algo, "seed": tc.seed, "E": tc.E,
                  "mu": tc.mu, "preset": cfg.name})

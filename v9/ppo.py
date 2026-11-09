@@ -121,7 +121,10 @@ def ppo_update(actor: Actor, critic: Critic, opt_a, opt_c, batch: dict, pc: PPOC
     """
     n = batch["obs"].shape[0]
     adv = batch["adv"]
-    adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+    # normalise over the steps the policy actually controlled (autopilot steps excluded)
+    m_all = batch["mask"] if "mask" in batch else torch.ones_like(adv)
+    sel = adv[m_all > 0] if (m_all > 0).sum() > 1 else adv
+    adv = (adv - sel.mean()) / (sel.std() + 1e-8)
     stats = {"pi_loss": 0.0, "v_loss": 0.0, "entropy": 0.0, "clipfrac": 0.0, "approx_kl": 0.0}
     count = 0
     for _ in range(pc.epochs):

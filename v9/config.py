@@ -33,6 +33,14 @@ class RISConfig:
     exp: float = 2.0                  # path-loss exponent of the RIS links
     payload_factor: float = 1.2       # aerial only: propulsion multiplier for carrying the panel
     phase_err_deg: float = 0.0        # std of random phase error added after quantization
+    # Element model. "pattern": far-field model of Tang et al. (IEEE TWC 2021) with a
+    # normalised element power pattern cos^q(theta) and element gain G = 2(q+1); q = 0.57
+    # gives G = pi, i.e. effective area = physical area of a lambda/2 x lambda/2 element
+    # (Ellingson, IEEE OJ-COMS 2021). "point": isotropic point scatterers (product of two
+    # free-space losses), the model used by v8 / Jiang et al.
+    elem_model: str = "pattern"
+    elem_q: float = 0.57
+    halfspace: bool = True            # reflect only into the front half-space of the panel
 
     @property
     def L(self) -> int:
@@ -113,6 +121,7 @@ class ScenarioConfig:
 
     # Observation
     agent_id_obs: bool = True         # one-hot agent index (symmetry breaking for shared policies)
+    top_k: int = 8                    # devices described in each UAV's observation
 
     # Return-to-home autopilot: when the remaining time is just enough to reach the final
     # point, the autopilot overrides the agent and flies home (data collection continues).
@@ -143,8 +152,27 @@ class ScenarioConfig:
         return self.K + (1 if self.has_aerial_ris else 0)
 
 
+def aim_normal(center, ground_target, sky_target) -> tuple:
+    """Panel normal bisecting the directions to the shadowed ground and to the flight zone,
+    as an installer would aim a fixed RIS."""
+    import numpy as np
+
+    c = np.asarray(center, float)
+    u1 = np.asarray(ground_target, float) - c
+    u2 = np.asarray(sky_target, float) - c
+    n = u1 / np.linalg.norm(u1) + u2 / np.linalg.norm(u2)
+    return tuple(float(v) for v in n / np.linalg.norm(n))
+
+
+def _aimed(cfg: ScenarioConfig) -> ScenarioConfig:
+    x0, y0, x1, y1 = cfg.shadow_region
+    n = aim_normal(cfg.ris.center, ((x0 + x1) / 2, (y0 + y1) / 2, 0.0),
+                   (cfg.area / 2, cfg.area / 2, cfg.uav_alt))
+    return replace(cfg, ris=replace(cfg.ris, normal=n))
+
+
 def building() -> ScenarioConfig:
-    return ScenarioConfig()
+    return _aimed(ScenarioConfig())
 
 
 def aerial() -> ScenarioConfig:
@@ -171,7 +199,7 @@ def legacy_small() -> ScenarioConfig:
         buildings=(), fixed_devices=V8_DEVICES, data_mbit=(1e6, 1e6), always_on=True,
         p_tx_dbm=30.0, n_sub=12, clutter="fixed",
         ris=RISConfig(kind="building", center=(5.0, 9.0, 0.0), normal=(0.0, 0.0, 1.0),
-                      ny=10, nz=5),
+                      ny=10, nz=5, elem_model="point", halfspace=False),
     )
 
 
@@ -233,8 +261,8 @@ def random_area(layout_seed: int, base: ScenarioConfig | None = None) -> Scenari
     rows = (replace(lo_row, h=h_lo), replace(hi_row, h=h_hi))
     ris = replace(base.ris, kind="building", center=(ris_xy[0], ris_xy[1], h_ris_row + 3.0),
                   normal=normal)
-    return replace(base, name=f"area{layout_seed}", buildings=rows + caps,
-                   shadow_region=shadow, ris=ris)
+    return _aimed(replace(base, name=f"area{layout_seed}", buildings=rows + caps,
+                          shadow_region=shadow, ris=ris))
 
 
 # Layout seeds for the multi-area study: disjoint training / validation / test areas.
@@ -247,7 +275,7 @@ TEST_AREAS = (227, 237, 204, 206, 201, 211, 203, 207)   # 2 of each type
 
 def building_noris() -> ScenarioConfig:
     """Same urban scene with the RIS switched off (isolates the RIS gain for learned flight)."""
-    return ScenarioConfig(name="building_noris", arbitration="none")
+    return replace(building(), name="building_noris", arbitration="none")
 
 
 PRESETS = {"building": building, "building_noris": building_noris, "aerial": aerial,

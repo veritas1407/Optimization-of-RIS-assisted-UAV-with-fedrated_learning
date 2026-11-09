@@ -24,7 +24,7 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from .baselines import EVAL_SEED_BASE, run_episode
+from .baselines import TEST_SEED_BASE, run_episode
 from .config import TEST_AREAS, TRAIN_AREAS, VAL_AREAS, random_area
 from .env import RISUAVEnv
 from .ppo import PPOConfig, RunningScale, n_params
@@ -34,13 +34,14 @@ from .trainers import TRAIN_SEED_BASE, VAL_SEED_BASE, Learner, TrainConfig, _wri
 @dataclass
 class MultiAreaConfig:
     mode: str = "fedavg"                 # local | fedavg | pooled
-    episodes_per_area: int = 2500
+    episodes_per_area: int = 3000
     E: int = 4
     fed_parts: str = "actor"             # fedavg: "actor" (critics stay at each GCS) | "both"
     seed: int = 0
     eval_every: int = 200                # in per-area episodes (multiple of episodes_per_update)
-    n_val_eps: int = 3                   # episodes per validation area
-    n_test_eps: int = 5                  # episodes per test area
+    n_val_eps: int = 5                   # episodes per validation area (4 areas -> 20)
+    n_test_eps: int = 12                 # episodes per test area (8 areas -> 96)
+    lam_rate: float = 0.1                # Dinkelbach price update rate (as in trainers)
     train_areas: tuple = TRAIN_AREAS
     val_areas: tuple = VAL_AREAS
     test_areas: tuple = TEST_AREAS
@@ -66,6 +67,7 @@ def eval_on_areas(actor, area_cfgs, n_eps: int, seed_base: int, lam: float) -> d
         per_area.append(float(np.mean([r["ee"] for r in rs])))
     out = {k: float(np.nanmean([r[k] for r in rows])) for k in rows[0]}
     out["ee_per_area"] = per_area
+    out["ee_per_episode"] = [float(r["ee"]) for r in rows]
     return out
 
 
@@ -116,7 +118,8 @@ def train_multiarea(mc: MultiAreaConfig, out_dir: Path, verbose: bool = True) ->
     epu = mc.ppo.episodes_per_update
     n_areas = len(train_cfgs)
     t0 = time.time()
-    comm = 0.0
+    comm = 0.0          # cross-area traffic (between area ground stations and the cloud)
+    comm_intra = 0.0    # within-area traffic (UAVs <-> their ground station), all modes
 
     if mc.mode == "pooled":
         envs = [RISUAVEnv(train_cfgs[0])]
@@ -153,24 +156,29 @@ def train_multiarea(mc: MultiAreaConfig, out_dir: Path, verbose: bool = True) ->
         ep_done = rnd * epu
         recent = []
         if mc.mode == "pooled":
-            for _ in range(n_areas):   # same total experience as the per-area learners
-                base = TRAIN_SEED_BASE * (mc.seed + 1) + 9_000_000
-                k0 = cursor[0]
-                traj, ms, steps = collect(envs[0], learners[0], scales[0], epu,
-                                          lambda e: base + k0 + e, train_cfgs, cursor)
-                learners[0].update(traj)
-                comm += steps * step_b + n_areas * actor_b   # raw data up, model down
-                recent += ms
+            # same total experience per round as the per-area learners, one update per round
+            base = TRAIN_SEED_BASE * (mc.seed + 1) + 9_000_000
+            k0 = cursor[0]
+            traj, ms, steps = collect(envs[0], learners[0], scales[0], n_areas * epu,
+                                      lambda e: base + k0 + e, train_cfgs, cursor)
+            learners[0].update(traj)
+            comm += steps * step_b + n_areas * actor_b       # raw data up, model down to each area
+            comm_intra += steps * step_b + n_areas * envs[0].n_agents * actor_b
+            envs[0].lam = (1 - mc.lam_rate) * envs[0].lam + mc.lam_rate * float(np.mean([m["ee"] for m in ms]))
+            recent += ms
         else:
             for a, (env, lr) in enumerate(zip(envs, learners)):
                 base = TRAIN_SEED_BASE * (mc.seed + 1) + a * 1_000_000 + (rnd - 1) * epu
-                traj, ms, _ = collect(env, lr, scales[a], epu, lambda e: base + e)
+                traj, ms, steps = collect(env, lr, scales[a], epu, lambda e: base + e)
                 lr.update(traj)
+                comm_intra += steps * step_b + env.n_agents * actor_b
+                env.lam = (1 - mc.lam_rate) * env.lam + mc.lam_rate * float(np.mean([m["ee"] for m in ms]))
                 recent += ms
             if mc.mode == "fedavg" and rnd % mc.E == 0:
                 _avg_into(learners, mc.fed_parts)
                 comm += 2.0 * (actor_b + (critic_b if mc.fed_parts == "both" else 0.0)) * n_areas
         log_rows.append({"episodes_per_area": ep_done, "time_s": time.time() - t0, "comm_MB": comm / 1e6,
+                         "comm_intra_MB": comm_intra / 1e6, "lam": float(np.mean([e.lam for e in envs])),
                          "train_ee": float(np.mean([m["ee"] for m in recent])),
                          "train_reached": float(np.mean([m["reached_final"] for m in recent]))})
 
@@ -197,18 +205,19 @@ def train_multiarea(mc: MultiAreaConfig, out_dir: Path, verbose: bool = True) ->
     template = copy.deepcopy(learners[0].actors[0])
     for key, (_, sd, ep) in best.items():
         template.load_state_dict(sd)
-        ev = eval_on_areas(template, test_cfgs, mc.n_test_eps, EVAL_SEED_BASE, lam)
+        ev = eval_on_areas(template, test_cfgs, mc.n_test_eps, TEST_SEED_BASE, lam)
         ev["best_episode"] = ep
         if mc.mode == "local":   # also how the area's model does on its own area
             a = int(key[4:])
             ev["own_area_ee"] = eval_on_areas(template, [train_cfgs[a]], mc.n_test_eps,
-                                              EVAL_SEED_BASE, lam)["ee"]
+                                              TEST_SEED_BASE, lam)["ee"]
         tests[key] = ev
         torch.save(sd, out_dir / f"best_{key}.pt")
     ees = [t["ee"] for t in tests.values()]
     summary = {
-        "mode": mc.mode, "E": mc.E, "seed": mc.seed, "comm_MB": comm / 1e6,
-        "test_ee": float(np.mean(ees)), "test_ee_across_models_std": float(np.std(ees)),
+        "mode": mc.mode, "E": mc.E if mc.mode == "fedavg" else None, "seed": mc.seed,
+        "comm_MB": comm / 1e6, "comm_intra_MB": comm_intra / 1e6,
+        "test_ee": float(np.mean(ees)), "test_ee_across_models_std": float(np.std(ees, ddof=1)) if len(ees) > 1 else 0.0,
         "test_delivered": float(np.mean([t["delivered_frac"] for t in tests.values()])),
         "test_reached": float(np.mean([t["reached_final"] for t in tests.values()])),
         "test_collisions": float(np.mean([t["collisions"] for t in tests.values()])),
