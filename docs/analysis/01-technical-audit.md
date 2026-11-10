@@ -111,6 +111,13 @@ report's math does not describe the code that produced the report's figures**.
   rotary-wing model of Zeng, Xu & Zhang (TWC 2018) with the paper's own constants
   (P_B=79.8563 W, P_I=88.6279 W, U_tip=120 m/s, v₀=4.03 m/s, d₀=0.6, s=0.05, ρ=1.225,
   A=0.503 m²). Hover power ≈ 168.5 W is verified at startup. ✅
+  **Erratum (2026-11-10): this check was wrong.** Only hover power was verified. The
+  induced-power term in `Pp_gpu` computes P_I·√(1 + v⁴/4v₀⁴ − v²/2v₀²) instead of Zeng's
+  P_I·(√(1 + v⁴/4v₀⁴) − v²/2v₀²)^½ (missing inner square root). Hover is identical
+  (168.5 W), but at 10 m/s v8 gives 331.8 W instead of 126.0 W, and at 15 m/s 689.5 W instead
+  of 138.5 W, so v8 strongly over-penalises forward flight and every v8 EE value is affected.
+  v9 (`v9/physics.py::propulsion_power`) implements the correct formula; unit tests pin hover
+  168.5 W and minimum 126.0 W at 10.2 m/s. ❌
 - **Rician fading normalization (`_rician_gpu`, lines 219–227).** LoS/NLoS mixing
   √(K/(K+1))·h_LoS + √(1/(K+1))·CN(0,1) with unit-power NLoS — correct second-order
   statistics. ✅
@@ -426,7 +433,7 @@ non-parallelizable.
 | "Agents cooperate; load is balanced (Jain ≈ 0.999)" | §4.9 | ❌ Unsupported — F8: no association ⇒ no cooperation is needed; symmetry explains the result |
 | "Policy learned collision avoidance" | §4.4, §4.11 | ❌ Unsupported — F9: environment enforces separation |
 | "Joint UAV-trajectory + RIS-phase learning" | throughout | ⚠️ Partially — trajectories are learned; per-realization phase control is impossible from the given observation (F10) and the RIS is not shared (F3) |
-| "Realistic channel and propulsion models" | Abstract, §3 | ⚠️ Propulsion yes; channels structurally yes but frozen (F4), near-field-invalid (F11), tuned ρ₀ (F11) |
+| "Realistic channel and propulsion models" | Abstract, §3 | ⚠️ Propulsion model yes but v8 code has a formula bug (see erratum in §2.1); channels structurally yes but frozen (F4), near-field-invalid (F11), tuned ρ₀ (F11) |
 | "Training is stable over 1500 episodes" | §4.3 | ✅ Supported by the learning curve (with the caveat that the objective it optimizes has the defects above) |
 
 **Bottom line:** the pipeline runs and trains stably, and the engineering iteration

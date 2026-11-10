@@ -51,8 +51,11 @@ roughly as good as every other. You cannot show that anything matters there.
 alignment bug in the RIS formula, PPO math issues (log-probabilities not summed, clamped
 actions breaking the probability ratio), per-UAV private RIS phases that a single physical
 panel cannot have, a tuned path-loss constant that made bit/J meaningless, single-seed results
-and post-processed curves. v9 is a new package that keeps v8's correct parts (the propulsion
-model, the general PPO structure) and rebuilds the rest. The old scene is still available as
+and post-processed curves. (Found later: v8's propulsion code also had a formula bug — the
+induced-power term misses an inner square root, so forward flight cost up to 7× too much;
+hover was correct, which is why the first audit missed it. v9 uses the correct formula.)
+v9 is a new package that keeps v8's correct parts (the propulsion
+model's constants, the general PPO structure) and rebuilds the rest. The old scene is still available as
 preset `legacy_small` so we can *show* that it could not demonstrate the RIS's value
 (measured: +0.5 % EE from the RIS there; see Part 13).
 
