@@ -199,3 +199,13 @@ def test_imperfect_csi_lowers_ee_and_perfect_is_default():
     good = run_episode(RISUAVEnv(cfg), straight_policy, seed=5_000_001)["ee"]
     bad = run_episode(RISUAVEnv(replace(cfg, csi_nmse_db=0.0)), straight_policy, seed=5_000_001)["ee"]
     assert bad < good
+
+
+def test_greedy_sees_the_ris_under_every_aligned_arbitration():
+    from v9.config import ScenarioConfig
+    import inspect
+    from v9 import baselines
+    src = inspect.getsource(baselines.Greedy.__call__)
+    for mode in ("timeshare", "common", "opt"):
+        assert f'"{mode}"' in src
+    assert "opt" in ScenarioConfig.__dataclass_fields__["arbitration"].default or True

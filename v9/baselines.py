@@ -79,7 +79,7 @@ class Greedy:
         tl = env._time_left()
         alive = (env.remaining > 1.0) & (env.win_end > t0)
         active = alive & (env.win_start <= t0)
-        ris_on = env.use_ris and cfg.arbitration in ("timeshare", "common")
+        ris_on = env.use_ris and cfg.arbitration in ("timeshare", "common", "opt")
         taken = set()
         acts = np.zeros((env.n_agents, 2))
         for a in range(env.n_agents):
