@@ -273,6 +273,48 @@ VAL_AREAS = (105, 101, 102, 103)               # NW-x, NW-y, SE-x, SE-y
 TEST_AREAS = (227, 237, 204, 206, 201, 211, 203, 207)   # 2 of each type
 
 
+def area_is_valid(cfg: ScenarioConfig) -> bool:
+    """Physical sanity of a generated area: RIS outside buildings, sees the courtyard (in
+    front of it), the direct courtyard->flight-zone link is blocked, buildings inside the map."""
+    import numpy as np
+
+    from . import physics as ph
+    boxes = ph.boxes_array(cfg.buildings)
+    ris = np.asarray(cfg.ris.center)
+    x0, y0, x1, y1 = cfg.shadow_region
+    dev = np.array([[(x0 + x1) / 2, (y0 + y1) / 2, 0.0]])
+    far = np.array([[cfg.area / 2, cfg.area / 2, cfg.uav_alt]])
+    return bool(not ph.inside_any_box(ris[None, :2], boxes)[0]
+                and not ph.segments_blocked(dev, ris[None], boxes)[0]
+                and ph.in_front(dev, ris, cfg.ris.normal)[0]
+                and ph.segments_blocked(dev, far, boxes)[0]
+                and all(0 <= v <= cfg.area for b in cfg.buildings for v in (b.x0, b.x1, b.y0, b.y1)))
+
+
+def hetero_area(seed: int) -> ScenarioConfig:
+    """A city area that differs from the others not only in layout (``random_area``) but in
+    its IoT deployment and hardware: number of open-field and courtyard devices, data per
+    device, device transmit power and RIS size. Used for the heterogeneous (non-IID)
+    federated-learning study. The observation size does not depend on these choices."""
+    import numpy as np
+
+    cfg = random_area(seed)
+    rng = np.random.default_rng(20_000 + seed)
+    scale = float(rng.uniform(0.6, 1.5))
+    side = int(rng.choice([10, 12, 14, 16, 18, 20]))
+    return replace(cfg, name=f"het{seed}",
+                   n_open=int(rng.integers(12, 25)), n_shadow=int(rng.integers(3, 10)),
+                   data_mbit=(10.0 * scale, 30.0 * scale),
+                   p_tx_dbm=float(rng.uniform(6.0, 14.0)),
+                   ris=replace(cfg.ris, ny=side, nz=side))
+
+
+# Heterogeneous FL study: 12 training areas (clients), 4 validation, 8 test; disjoint seeds.
+HET_TRAIN = (300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311)
+HET_VAL = (400, 401, 402, 403)
+HET_TEST = (500, 501, 502, 503, 504, 505, 506, 507)
+
+
 def building_noris() -> ScenarioConfig:
     """Same urban scene with the RIS switched off (isolates the RIS gain for learned flight)."""
     return replace(building(), name="building_noris", arbitration="none")

@@ -114,7 +114,8 @@ class PPOConfig:
 
 
 def ppo_update(actor: Actor, critic: Critic, opt_a, opt_c, batch: dict, pc: PPOConfig,
-               prox: dict | None = None, mu: float = 0.0, update_critic: bool = True) -> dict:
+               prox: dict | None = None, mu: float = 0.0, update_critic: bool = True,
+               update_actor: bool = True) -> dict:
     """One PPO update. ``batch`` holds tensors obs, u, logp, adv, ret, v_old, cin.
 
     If ``prox`` (name -> tensor of global weights) and ``mu`` > 0 are given, a FedProx
@@ -158,9 +159,11 @@ def ppo_update(actor: Actor, critic: Critic, opt_a, opt_c, batch: dict, pc: PPOC
                                                  for k, p in critic.named_parameters() if "critic." + k in prox)
             opt_a.zero_grad()
             opt_c.zero_grad()
-            (loss_a + loss_c if update_critic else loss_a).backward()
-            nn.utils.clip_grad_norm_(actor.parameters(), pc.max_grad)
-            opt_a.step()
+            total = (loss_a if update_actor else 0.0) + (loss_c if update_critic else 0.0)
+            total.backward()
+            if update_actor:
+                nn.utils.clip_grad_norm_(actor.parameters(), pc.max_grad)
+                opt_a.step()
             if update_critic:
                 nn.utils.clip_grad_norm_(critic.parameters(), pc.max_grad)
                 opt_c.step()

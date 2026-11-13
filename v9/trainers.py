@@ -79,6 +79,8 @@ class Learner:
             self.global_w = self._client_weights(self.clients[0])
         self.comm_bytes = 0.0
         self.n_updates = 0
+        self.prox = None      # cross-area FedProx: {"actor.<name>": global tensor}
+        self.mu = 0.0
 
     # ---------------------------------------------------------------- acting
     def actor_of(self, a: int) -> Actor:
@@ -165,7 +167,7 @@ class Learner:
         self.comm_bytes += 2.0 * per_client * len(self.clients)     # upload + download
 
     # ---------------------------------------------------------------- update
-    def update(self, traj: dict) -> dict:
+    def update(self, traj: dict, update_actor: bool = True) -> dict:
         tc, pc = self.tc, self.tc.ppo
         n = self.env.n_agents
         T = len(traj["rew"])
@@ -192,7 +194,8 @@ class Learner:
                     "mask": torch.as_tensor(mask[:, agents].reshape(-1)),
                 }
                 stats[f"role{r}"] = ppo_update(actor, self.critic, self.opt_a[r], self.opt_c, b, pc,
-                                               update_critic=(r == 0))
+                                               prox=self.prox if r == 0 else None, mu=self.mu,
+                                               update_critic=(r == 0), update_actor=update_actor)
             self.comm_bytes += self.bytes_per_update()
         else:
             prox = self.global_w if tc.algo == "fedprox" else None

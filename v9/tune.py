@@ -41,6 +41,9 @@ MAX_COLLISIONS = 0.5    # separation violations per episode allowed (learned age
 def target_cfgs(target: str):
     if target == "multiarea":
         return [random_area(s) for s in VAL_AREAS]
+    if target == "fedhet":
+        from .config import HET_VAL, hetero_area
+        return [hetero_area(s) for s in HET_VAL]
     return [get_preset(target)]
 
 

@@ -199,6 +199,57 @@ def exp_multiarea(args):
     _atomic(out, lambda d: train_multiarea(mc, d))
 
 
+def exp_fedhet(args):
+    from .fedhet import FedHetConfig, train_fedhet
+    from .ppo import PPOConfig
+
+    fc = FedHetConfig(mode=args.mode, participation=args.participation, E=args.E, mu=args.mu,
+                      compress=args.compress, seed=args.seed, total_episodes=args.episodes,
+                      ppo=PPOConfig(**({"lr_anneal": True} | (json.loads(args.ppo) if args.ppo else {}))))
+    tag = args.tag or (args.mode + (f"_p{args.participation:g}" if args.mode in ("fedavg", "fedprox") else "")
+                       + (f"_{args.compress}" if args.compress != "none" else ""))
+    out = RESULTS / "fedhet" / tag / f"seed{args.seed}"
+    if args.skip_existing and (out / "test.json").exists():
+        print(f"  [{tag} s{args.seed}] already done, skipping")
+        return
+    _atomic(out, lambda d: train_fedhet(fc, d))
+
+
+def exp_fedhet_baselines(args):
+    """Heuristics on the 8 unseen heterogeneous test areas (same missions as the FL test)."""
+    from .baselines import run_episode, straight_policy, tuned_greedy
+    from .config import HET_TEST, hetero_area
+    from .env import RISUAVEnv
+    from .stats import mean_ci
+
+    rows = []
+    for pname in ("straight", "greedy_tuned", "greedy_dec"):
+        pol = straight_policy if pname == "straight" else tuned_greedy("fedhet", pname == "greedy_tuned")
+        ees, per_area = [], []
+        for s in HET_TEST:
+            env = RISUAVEnv(hetero_area(s))
+            ms = [run_episode(env, pol, TEST_SEED_BASE + j) for j in range(12)]
+            ees += [m["ee"] for m in ms]
+            per_area.append(float(np.mean([m["ee"] for m in ms])))
+        st = mean_ci(ees)
+        rows.append({"policy": pname, "test_ee": st["mean"], "test_ee_ci95": st["ci95"],
+                     "per_area": " ".join(f"{v:.0f}" for v in per_area)})
+        print(f"  {pname:12s} EE on unseen heterogeneous areas {st['mean']:7.0f} ± {st['ci95']:4.0f}")
+    _write_csv(RESULTS / "fedhet" / "baselines.csv", rows)
+
+
+def exp_finetune(args):
+    from .fedhet import finetune
+
+    src = args.tag or "fedavg_p0.5"
+    for init in ("global", "scratch"):
+        out = RESULTS / "fedhet" / "finetune" / f"{src}_{init}" / f"seed{args.seed}"
+        if args.skip_existing and (out / "test.json").exists():
+            continue
+        path = RESULTS / "fedhet" / src / f"seed{args.seed}" / "best_global.pt" if init == "global" else None
+        _atomic(out, lambda d: finetune(path, args.seed, d, episodes=args.episodes))
+
+
 def load_policy(preset: str, tag: str, seed: int, cfg=None):
     """Deterministic policy callable from a saved single-area checkpoint (network sizes are
     read from the run's config.json)."""
@@ -308,8 +359,11 @@ def exp_multiarea_baselines(args):
 
 def main(argv=None):
     p = argparse.ArgumentParser()
-    p.add_argument("--exp", required=True, choices=["gate", "train", "multiarea", "multiarea_baselines", "sweep"])
-    p.add_argument("--mode", default="fedavg", choices=["local", "fedavg", "pooled"])
+    p.add_argument("--exp", required=True, choices=["gate", "train", "multiarea", "multiarea_baselines", "sweep",
+                                                    "fedhet", "finetune", "fedhet_baselines"])
+    p.add_argument("--participation", type=float, default=0.5)
+    p.add_argument("--compress", default="none", choices=["none", "q8", "top10"])
+    p.add_argument("--mode", default="fedavg", choices=["local", "fedavg", "fedprox", "pooled"])
     p.add_argument("--fed-parts", default="actor", choices=["actor", "both"])
     p.add_argument("--n-eval", type=int, default=N_TEST)
     p.add_argument("--skip-areas", action="store_true")
@@ -334,7 +388,8 @@ def main(argv=None):
     import torch
     torch.set_num_threads(1)   # small networks; several runs share the machine
     {"gate": exp_gate, "train": exp_train, "multiarea": exp_multiarea,
-     "multiarea_baselines": exp_multiarea_baselines, "sweep": exp_sweep}[args.exp](args)
+     "multiarea_baselines": exp_multiarea_baselines, "sweep": exp_sweep, "fedhet": exp_fedhet,
+     "finetune": exp_finetune, "fedhet_baselines": exp_fedhet_baselines}[args.exp](args)
     print(f"done in {time.time() - t:.1f}s")
 
 

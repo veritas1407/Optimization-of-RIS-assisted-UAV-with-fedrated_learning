@@ -95,7 +95,34 @@ def post(seeds, episodes):
          for n in SWEEPS]
 
 
-GROUPS = {"pilots": pilots, "pilots2": pilots2, "pilots3": pilots3, "single": single, "presets": presets,
+def control(seeds, episodes_per_area=12000):
+    """Equal-data control: each area trains alone on 4x the episodes, i.e. as much experience
+    as the FedAvg/pooled global model sees in total."""
+    return [(f"multiarea/local_x4_s{s}", ["--exp", "multiarea", "--skip-existing", "--mode", "local",
+                                           "--episodes", "12000", "--tag", "local_x4", "--seed", str(s),
+                                           "--ppo", PPO]) for s in seeds]
+
+
+def fedhet(seeds, episodes=11_520):
+    """Heterogeneous multi-area FL: 12 non-IID areas, equal total training episodes per mode."""
+    modes = [("local", ["--mode", "local"]), ("pooled", ["--mode", "pooled"]),
+             ("fedavg_p0.5", ["--mode", "fedavg", "--participation", "0.5"]),
+             ("fedavg_p1", ["--mode", "fedavg", "--participation", "1"]),
+             ("fedprox_p0.5", ["--mode", "fedprox", "--participation", "0.5", "--mu", "0.01"]),
+             ("fedavg_p0.5_q8", ["--mode", "fedavg", "--participation", "0.5", "--compress", "q8"]),
+             ("fedavg_p0.5_top10", ["--mode", "fedavg", "--participation", "0.5", "--compress", "top10"])]
+    return [(f"fedhet/{tag}_s{s}", ["--exp", "fedhet", "--skip-existing", "--E", "4", "--episodes", str(episodes),
+                                     "--seed", str(s), "--tag", tag] + extra)
+            for s in seeds for tag, extra in modes]
+
+
+def finetune(seeds, episodes=320):
+    """Few-shot adaptation in each unseen area: global FedAvg model vs scratch (run after fedhet)."""
+    return [(f"fedhet/finetune_s{s}", ["--exp", "finetune", "--skip-existing", "--tag", "fedavg_p0.5",
+                                        "--episodes", str(episodes), "--seed", str(s)]) for s in seeds]
+
+
+GROUPS = {"fedhet": fedhet, "finetune": finetune, "control": control, "pilots": pilots, "pilots2": pilots2, "pilots3": pilots3, "single": single, "presets": presets,
           "multiarea": multiarea, "campaign": campaign, "post": post}
 
 
