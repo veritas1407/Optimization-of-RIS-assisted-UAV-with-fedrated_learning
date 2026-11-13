@@ -154,6 +154,19 @@ Paired by seed (same initialisation and training missions):
   traffic.
 - Intra-area traffic (UAVs ↔ their ground station) is the same for all modes: 1,126 MB.
 
+**Equal-data control (v9.2).** The FedAvg model is built from 4 areas × 3,000 missions, each
+local model from 3,000. To check that FedAvg does not win simply by seeing more data, each
+area was also trained alone on **12,000** of its own missions (`multiarea/local_x4`, 5 seeds):
+
+| Comparison (paired by seed, unseen areas) | Difference |
+|---|---|
+| local ×4 data − local | +83 ± 171 bit/J (+1.1 %, not significant; 7,663 ± 120) |
+| **FedAvg − local ×4 data** | **+290 ± 94 bit/J (+3.8 %), 5 of 5 seeds** |
+| pooled − local ×4 data | +498 ± 131 bit/J (+6.5 %), 5 of 5 seeds |
+
+Four times more missions from the *same* area barely helps; what generalises is experience
+from *different* areas — which FedAvg obtains without moving raw data.
+
 **What this shows**
 1. **Local models overfit their own layout.** On their own area they score 8,167 bit/J; on
    unseen areas 7,581 (−7 %). Part of that drop is that the training areas happen to be
@@ -265,6 +278,43 @@ over 5 seeds; heuristics keep their default-scene tuning.
   decentralised greedy ≈ CTDE ≳ IPPO > FedAvg (single area) > straight line.
 
 ---
+
+## 7b. Optimisation additions (v9.2)
+
+**Optimised RIS time shares** (`arbitration="opt"`, `env._opt_shares`): instead of giving
+every RIS configuration an equal share of the slot, the shares solve
+$\max_\tau \sum_i \min(D_i^{\text{left}}, \delta\sum_c \tau_c r_{ci})$ (concave; greedy over
+1/20-slot slices). Same test missions, policies not retrained:
+
+| Policy | equal shares | optimised shares | gain |
+|---|---|---|---|
+| centralised greedy | 8,675 | 8,730 | +0.6 % |
+| decentralised greedy | 8,199 | 8,221 | +0.3 % |
+| MAPPO-CTDE | 8,119 | 8,165 | +0.6 % |
+| IPPO | 8,027 | 8,071 | +0.5 % |
+| FedAvg (E = 4) | 7,742 | 7,778 | +0.5 % |
+| straight line | 7,065 | 7,111 | +0.7 % |
+
+A consistent but small gain: usually only one courtyard device needs the RIS at a time, so the
+simple equal split is already close to optimal.
+
+**Imperfect channel knowledge** (`csi_nmse_db`): scheduling and RIS alignment use channel
+estimates with normalised MSE e (all links, every slot); the bits are computed with the true
+channels.
+
+| Policy | perfect | e = −20 dB | −10 dB | −5 dB | 0 dB |
+|---|---|---|---|---|---|
+| centralised greedy | 8,675 | 8,418 | 8,177 | 7,909 | 7,578 |
+| decentralised greedy | 8,199 | 7,833 | 7,519 | 7,314 | 6,922 |
+| MAPPO-CTDE | 8,119 | 7,933 | 7,602 | 7,382 | 6,935 |
+| IPPO | 8,027 | 7,827 | 7,480 | 7,272 | 6,833 |
+| FedAvg (E = 4) | 7,742 | 7,544 | 7,306 | 7,080 | 6,632 |
+| straight line | 7,065 | 6,823 | 6,617 | 6,431 | 6,020 |
+
+EE falls by 2–4 % at −20 dB, 6–8 % at −10 dB and 13–16 % with very poor estimates (0 dB).
+The learned CTDE policy degrades slightly more gracefully than the decentralised heuristic
+(it is ahead of it at every error level from −20 dB on). Pilot overhead for estimating the
+257 cascaded coefficients per device is < 0.1 % of a slot (§9) and is neglected.
 
 ## 8. What changed from v9.0, and why the numbers moved
 
