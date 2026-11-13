@@ -5,6 +5,16 @@ only in `results_v9/archive_v9.0/`). For the ground-up explanation of the system
 [`docs/v9_explained.md`](v9_explained.md); for the audit that triggered v9.1 see
 [`docs/analysis/06-v9-audit.md`](analysis/06-v9-audit.md).*
 
+## The problem being solved
+
+Maximise mission energy efficiency (bits ÷ flight energy) over UAV trajectories, device
+scheduling, RIS phases and RIS time shares, under speed, acceleration, separation,
+landing, receiver, duty-cycle, data and 2-bit-phase constraints — problem **(P1)**, written
+out with its solution architecture in [`v9_explained.md`, Part 7½](v9_explained.md). Solver:
+Dinkelbach outer loop; closed-form RIS phases; optimised or equal RIS time shares;
+deadline-aware scheduling; MAPPO trajectory policy trained with federated learning across
+city areas.
+
 ## How to read the numbers
 
 - **EE** = bits delivered ÷ total UAV propulsion energy (bit/J), over a 100 s mission.
@@ -49,7 +59,7 @@ non-line-of-sight in the urban model. That is why, at long range, the RIS path e
 open-field direct link.
 
 **All 16 generated city layouts** (`results_v9/gate/area_feasibility.csv`): courtyard-feasible
-area 2–5 % → 75–91 % with the RIS; RIS EE gain +24 to +32 % for the straight line and +8 to
+area 2–5 % → 75–91 % with the RIS; RIS EE gain +23 to +33 % for the straight line and +8 to
 +19 % for the tuned greedy.
 
 ---
@@ -67,6 +77,10 @@ area 2–5 % → 75–91 % with the RIS; RIS EE gain +24 to +32 % for the straig
 - Each configuration uses the heuristic tuned for it on validation missions (no-RIS runs use
   the no-RIS tuning). All policies reach the final zone in 100 % of missions; the tuned
   heuristics have ≤ 0.15 violations per mission (untuned greedy 0.5–0.7, random 3.2).
+- Heuristic tuning has its own noise: the centralised greedy tuned on the RIS scene scores
+  7,698 when flown without the RIS, more than the one tuned for the no-RIS scene (7,564).
+  Against that stronger no-RIS reference the centralised RIS gain is +12.7 % instead of
+  +14.7 %; the RIS gain is robustly **+13–15 %** for tuned heuristics.
 - Random RIS phases ≈ no RIS; time-share ≈ common arbitration (only one courtyard device is
   usually active at a time).
 
@@ -91,19 +105,27 @@ all of them, so the differences come from bits delivered, not energy.
 
 **What this shows**
 1. **Learned vs heuristics.** Every learned method clearly beats the straight line
-   (+8 to +15 %). The best (CTDE) is statistically level with the tuned decentralised
-   heuristic that has the same information (−1.0 ± 1.0 %), and 6.4 % below the centralised
-   heuristic that sees all devices and assigns UAVs jointly. **The learned policies do not
+   (+8 to +15 %). The best (CTDE) is within 1 % of, but slightly below, the tuned
+   decentralised heuristic that has the same information (−0.98 ± 0.74 %, the CI excludes
+   zero), and 6.4 % below the centralised heuristic that sees all devices and assigns UAVs
+   jointly. These CIs count training-seed variation only: the heuristic is treated as fixed,
+   although re-tuning it on other validation missions moves it by ~100–150 bit/J (e.g. the
+   centralised greedy tuned for the no-RIS scene scores 7,564 there, the RIS-tuned one 7,698),
+   so differences of ~1–2 % between learned and heuristic policies are not meaningful. **The learned policies do not
    beat a well-tuned heuristic.** Pilots showed that more training, a wider network or more
    devices in view do not close the gap (§6).
 2. **FL inside one area does not help.** With only three UAVs flying in the same area,
-   averaging their models costs EE relative to independent learning (IPPO), more so the less
-   often they average (E = 16 worst) — the averaged model is a compromise between three
+   averaging their models costs EE relative to independent learning (IPPO); there is a trend
+   toward worse results the less often they average (E = 1 / 4 / 16: 7,829 / 7,742 / 7,647),
+   but the intervals overlap, so the ordering is not established — the averaged model is a compromise between three
    drifted local models and also collides more (FedAvg E = 16: 3.9 violations per mission).
    **FedPer**, which keeps each UAV's output layer personal, is the best federated variant
    (level with IPPO, −2.6 % vs the decentralised heuristic, and the fewest violations).
 3. **Communication.** CTDE uploads every transition to the central learner (375 MB per run);
-   FedAvg E = 4 uses about half of that, E = 16 an eighth; IPPO uses none.
+   FedAvg E = 4 uses about half of that, E = 16 an eighth; IPPO exchanges no learning data.
+   Note that all methods share one team reward and one centralised scheduler that knows every
+   channel (the same for every method), so "0 MB" counts learning traffic only, not the
+   coordination the environment itself provides.
 
 ---
 
@@ -136,7 +158,9 @@ Paired by seed (same initialisation and training missions):
 1. **Local models overfit their own layout.** On their own area they score 8,167 bit/J; on
    unseen areas 7,581 (−7 %), and the four area models differ from each other by ~160 bit/J.
 2. **FedAvg recovers most of what pooling gains** (+373 of +581 bit/J over local, i.e. 64 %)
-   while sending 8.8× less cross-area traffic than pooling and **no raw data**.
+   while sending 8.8× less cross-area traffic than pooling and **no raw data**. Counting the
+   within-area traffic (UAVs ↔ ground station, 1,126 MB in every mode) as well, the total
+   saving is 1.6× (1,214 vs 1,896 MB per run).
 3. **Averaging only the actors is enough**; averaging the critics too costs 5.8× the traffic
    for nothing.
 4. Against heuristics on unseen areas: pooled learning (8,162) is level with the tuned
@@ -205,7 +229,8 @@ over 5 seeds; heuristics keep their default-scene tuning.
 - **Bigger RIS helps steadily** (CTDE +12.6 % from 64 to 400 elements); the ranking of the
   methods never changes.
 - **2-bit phases are enough:** 1 bit costs 2–3.5 %, 3 bits or continuous add < 1 %.
-- **Robust to imperfect channel knowledge:** a 20° random phase error costs < 1 %, 40° about
+- **Robust to RIS phase noise:** (random per-element phase errors on top of perfect channel
+  knowledge; imperfect channel estimates are studied separately in §11) a 20° error costs < 1 %, 40° about
   1.4–2.5 %.
 - **Transmit power and data volume move everything together;** with half the data
   (5–15 Mbit per device) all policies are within ~8 % of each other (the straight line even
@@ -229,12 +254,14 @@ over 5 seeds; heuristics keep their default-scene tuning.
 - FL methods judged on the federated (averaged) model; Dinkelbach price actually updated.
 - Statistics: 100 fresh test missions, 5 seeds, 95 % CIs, paired comparisons.
 - v9.0's headline "learned MAPPO beats greedy" does **not** survive: against tuned and fair
-  heuristics the learned policies are level with the like-for-like rival and below the
-  full-information one.
+  heuristics the learned policies are within ~1 % of (slightly below) the like-for-like rival
+  and 6 % below the full-information one.
 
 ## 9. Limitations
 
-Perfect channel knowledge at the RIS controller (sweep over phase error in §7); buildings
+Perfect channel knowledge at the RIS controller in the main results (imperfect estimates in
+§11; pilot overhead for estimating the 257 cascaded coefficients is ≈ 257 symbols × 5.6 µs ≈
+1.4 ms per device per 2.5 s slot, i.e. < 0.1 %, and is neglected); buildings
 are boxes with a fixed +20 dB loss; fixed altitude, Shannon rates, no protocol overhead; only
 propulsion energy; data size, bandwidth and one receiver per UAV are design choices within
 NB-IoT ranges; FL simulated on one machine (it fixes what is exchanged, not real links); the
@@ -247,8 +274,9 @@ On a 500 m urban scenario with a shadowed courtyard, a building-mounted 256-elem
 closed-form 2-bit phase control raises energy efficiency by 14–26 % for every flight policy
 (+12.8 % under learned flight), whereas the same panel carried by a fourth UAV lowers it by
 ~38 % because of the carrier's flight energy; in the original 20 m scene the RIS changes EE
-by only 0.5 %. Learned MAPPO trajectories beat straight-line flight by 15 % and match a tuned
-decentralised heuristic, but remain 6 % below a centralised full-information planner.
+by only 0.5 %. Learned MAPPO trajectories beat straight-line flight by 15 % and come within
+1 % of a tuned decentralised heuristic, but remain 6 % below a centralised full-information
+planner.
 Federated learning does not help three UAVs within one area, but across city areas FedAvg of
 the area actors generalises to eight unseen layouts 4.9 % better than training each area
 alone, recovering 64 % of the benefit of pooling all raw data with 8.8× less cross-area

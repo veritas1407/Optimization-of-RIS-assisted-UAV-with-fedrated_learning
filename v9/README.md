@@ -15,7 +15,7 @@ from the 20 m toy scene to a 500 m urban scene where the RIS has a real job.
 | Channel | Rayleigh/Rician with tuned ρ₀ | Al-Hourani urban air-to-ground LoS probability, explicit building blockage, FSPL anchor, real noise and bandwidth (bit/J is real) |
 | Reward | `100·EE + 0.4·progress` | Dinkelbach form `(bits − λ·energy)/(λ·E_ref)` + reachability shaping + collision penalty |
 | Learning | MAPPO only, PPO math issues | MAPPO-CTDE, IPPO, FedAvg, FedProx with corrected PPO and metered communication |
-| Evaluation | 1 seed, monotonicity post-processing | held-out validation/test seeds, mean ± std over seeds, no post-processing |
+| Evaluation | 1 seed, monotonicity post-processing | held-out validation/test seeds, mean ± 95 % CI over seeds, no post-processing |
 
 ## Layout
 
@@ -46,11 +46,11 @@ python -m pytest v9/tests -q
 python -m v9.tune --target building          # also building_noris, aerial, multiarea (≈ 1–2 min each)
 python -m v9.run --exp gate && python -m v9.plots gate
 
-# one run (≈ 12 min for 6000 episodes on one CPU core)
-python -m v9.run --exp train --algo ctde --episodes 6000 --ppo '{"lr_anneal": true}' --seed 0
+# one run (≈ 9 min for 4000 episodes on one CPU core)
+python -m v9.run --exp train --algo ctde --episodes 4000 --ppo '{"lr_anneal": true}' --seed 0
 
-# the whole campaign, 4 runs in parallel (≈ 6 h on 4 cores), then sweeps and figures
-python -m v9.launch campaign --episodes 6000
+# the whole campaign, 4 runs in parallel (≈ 3 h on 4 cores), then sweeps and figures
+python -m v9.launch campaign --episodes 4000
 python -m v9.launch post
 python -m v9.plots train building; python -m v9.plots multiarea; python -m v9.plots ris_value
 python -m v9.plots sweeps building
@@ -74,13 +74,14 @@ ground-up explanation: [`docs/v9_explained.md`](../docs/v9_explained.md). Headli
 * **Aerial (UAV-carried) RIS: −37.6 %** vs the building RIS, because the carrier adds
   ~41 % flight energy.
 * **Learned vs heuristics (single area):** MAPPO-CTDE 8,119 ± 61 bit/J — +14.9 % over the
-  straight line, level with a tuned decentralised heuristic with the same information
-  (−1.0 ± 1.0 %), 6.4 % below a centralised full-information heuristic.
+  straight line, within 1 % of (slightly below) a tuned decentralised heuristic with the
+  same information (−0.98 ± 0.74 %), 6.4 % below a centralised full-information heuristic.
 * **FL inside one area** (3 UAVs) does not help: FedAvg/FedProx 7,647–7,829, FedPer 7,989,
   IPPO 8,027.
 * **FL across city areas** (generalisation to 8 unseen areas): FedAvg 7,953 ± 62 vs local
   7,581 ± 115 (+4.9 %, all 5 seeds) vs pooled raw data 8,162 ± 59; FedAvg recovers 64 % of
-  the pooling gain with 8.8× less cross-area traffic and no raw data leaving an area.
+  the pooling gain with 8.8× less cross-area traffic (1.6× less in total) and no raw data
+  leaving an area.
 
 ## Known limitations
 

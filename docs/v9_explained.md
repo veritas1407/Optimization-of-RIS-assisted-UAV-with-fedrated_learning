@@ -296,6 +296,59 @@ kept λ fixed; the audit caught it.)
 
 ---
 
+## Part 7½ — The optimisation problem, written formally (P1)
+
+**Intuition.** Before choosing any algorithm, write down exactly what we want and what is
+not allowed. Everything else in the project is a way of solving this one problem.
+
+**Variables** (for slots $t = 1..M$, UAVs $k = 1..K$, devices $i = 1..I$):
+- trajectories: positions $\mathbf q_k[t]$ and velocities $\mathbf v_k[t]$;
+- scheduling: $a_{ik}[t] \in \{0,1\}$ (device $i$ uploads to UAV $k$ in slot $t$);
+- RIS: configurations $\boldsymbol\theta_c[t] \in \{0, \tfrac{\pi}{2}, \pi, \tfrac{3\pi}{2}\}^L$ and their
+  time shares $\tau_c[t] \ge 0$, $\sum_c \tau_c[t] = 1$.
+
+$$
+\textbf{(P1)}\quad \max_{\mathbf q, \mathbf v, \mathbf a, \boldsymbol\theta, \boldsymbol\tau}\;
+\mathrm{EE} = \frac{\sum_{t}\sum_{i} b_i[t]}{\sum_{t}\sum_{k} E_k[t]},
+\qquad b_i[t] = \sum_k a_{ik}[t]\,\delta \sum_c \tau_c[t]\, B\log_2\!\Big(1 + \tfrac{P\,|h_{d,ik} + \mathbf h_{ru,k}^{T}\mathrm{diag}(e^{j\boldsymbol\theta_c})\mathbf h_{ir,i}|^2}{N}\Big)
+$$
+
+subject to
+
+| | Constraint | Meaning |
+|---|---|---|
+| C1 | $\lVert\mathbf v_k[t]\rVert \le v_{\max}$ = 20 m/s | speed limit |
+| C2 | $\lVert\mathbf v_k[t] - \mathbf v_k[t-1]\rVert \le a_{\max}\delta$ | acceleration limit |
+| C3 | $\mathbf q_k[t] = \mathbf q_k[t-1] + \tfrac{\delta}{2}(\mathbf v_k[t-1] + \mathbf v_k[t])$, inside the area | kinematics |
+| C4 | $\lVert\mathbf q_k[t] - \mathbf q_j[t]\rVert \ge d_{\min}$ = 20 m | separation |
+| C5 | $\mathbf q_k[0]$ = start, $\lVert\mathbf q_k[M] - \mathbf q_F\rVert \le r_F$ | take-off and landing |
+| C6 | $\sum_i a_{ik}[t] \le N_{\text{sub}}$, $\sum_k a_{ik}[t] \le 1$, $a_{ik}[t] = 0$ outside device $i$'s window | one receiver per UAV, each device to one UAV, duty cycle |
+| C7 | $\sum_t b_i[t] \le D_i$ | a device cannot send more than it holds |
+| C8 | $\theta_{c,l} \in$ 2-bit set, $\tau_c[t] \ge 0$, $\sum_c\tau_c[t] = 1$ | discrete phases, one panel shared in time |
+
+with flight energy $E_k[t] = \int_{\text{slot}} P(\lVert\mathbf v_k(s)\rVert)\,ds$ (Part 4).
+
+**Why it cannot be solved directly.** It is a *fractional* (ratio) objective, *mixed-integer*
+(scheduling, discrete phases), *non-convex* (trajectories inside the log and the path loss),
+*stochastic* (fading) and *online*: device positions, data sizes and wake-up times are only
+revealed as the mission unfolds. No off-the-shelf solver handles all of that at once.
+
+**How v9 solves it — one solver per block of variables (the solution architecture):**
+
+| Block | Solved by | Optimal? |
+|---|---|---|
+| Ratio objective | **Dinkelbach**: maximise $\sum b - \lambda\sum E$, update $\lambda$ toward the achieved EE (Part 7) | standard equivalence |
+| $\boldsymbol\theta_c$ given who is served | **closed-form alignment** + 2-bit rounding (Part 5.2) | optimal per link (continuous), ≤ 0.9 dB loss from rounding |
+| $\boldsymbol\tau$ given the configurations | equal shares (default) or **optimised shares** (`arbitration="opt"`): concave problem $\max_\tau \sum_i \min(D_i^{\text{left}}, \delta\sum_c \tau_c r_{ci})$, greedy over 1/20-slot slices | optimal up to the slice size |
+| $\mathbf a$ given positions | deadline-aware greedy (most urgent device to its best UAV) | heuristic |
+| $\mathbf q, \mathbf v$ (C1–C5) | **multi-agent RL policy** (MAPPO), one decision per slot from local observations; C1–C3 enforced by the dynamics, C5 by the autopilot shield, C4 by reward penalty + separation layer | learned |
+| Training the RL policy across city areas | **federated learning** (FedAvg / FedProx, partial participation, compressed updates) | — |
+
+So "optimisation of RIS-assisted UAVs" = solving P1; "with federated learning" = the way the
+trajectory part of the solver is trained across many areas without moving raw data.
+
+---
+
 ## Part 8 — Reinforcement learning, from scratch
 
 ### 8.1 The idea
@@ -542,7 +595,7 @@ Full tables: [`docs/v9_results.md`](v9_results.md). The short version:
 
 | Method | EE | vs decentralised greedy (8,199) | vs centralised greedy (8,675) | Training traffic |
 |---|---|---|---|---|
-| MAPPO-CTDE | 8,119 ± 61 | −1.0 % (level) | −6.4 % | 375 MB |
+| MAPPO-CTDE | 8,119 ± 61 | −1.0 % (within 1 %, slightly below) | −6.4 % | 375 MB |
 | IPPO | 8,027 ± 262 | −2.1 % | −7.5 % | 0 |
 | FedPer (E = 4) | 7,989 ± 113 | −2.6 % | −7.9 % | 176 MB |
 | FedAvg E = 1 / 4 / 16 | 7,829 / 7,742 / 7,647 | −4.5 / −5.6 / −6.7 % | −9.7 / −10.8 / −11.8 % | 708 / 177 / 44 MB |
@@ -565,8 +618,8 @@ bigger RIS helps steadily (64 → 400 elements: +12.6 % for CTDE).
 1. The new scenario makes the RIS matter (+13–26 %), and the old one could not (+0.5 %).
 2. A building-mounted RIS is far better than a UAV-carried one once the carrier's energy is
    counted.
-3. The learned trajectories beat straight flight clearly and match a carefully tuned
-   heuristic with the same information. They do not beat a centralised planner that sees
+3. The learned trajectories beat straight flight clearly and come within 1 % of a carefully
+   tuned heuristic with the same information. They do not beat a centralised planner that sees
    everything; more training, a wider network or more devices in view did not change that
    (pilots, 13.2).
 4. Federated learning's value here is **generalisation across areas without sharing raw
@@ -652,13 +705,15 @@ bigger RIS helps steadily (64 → 400 elements: +12.6 % for CTDE).
 3. **Why does the old scene show nothing?** Everything is within a few metres; the direct link
    is already excellent, so the RIS adds +0.5 %.
 4. **Does your RL beat the heuristics?** It matches a tuned decentralised heuristic with the
-   same information and stays ~5 % below a centralised full-information planner. We report
+   same information to within 1 % (slightly below) and stays 6.4 % below a centralised
+   full-information planner. We report
    this honestly; the heuristics were tuned as carefully as the RL.
 5. **Then why use RL?** No hand-tuning per scenario (the heuristics needed separate tuning for
    every preset), and it is the substrate on which FL is studied; the multi-area experiment
    tests whether learned policies transfer to unseen layouts.
 6. **What does FL buy you?** Privacy (raw data stays in the area) and much less traffic than
-   pooling, at (expected) similar generalisation; we measure both.
+   pooling: across city areas FedAvg generalises 4.9 % better than each area learning alone
+   and gets 64 % of pooling's gain with 8.8× less cross-area traffic (1.6× less in total).
 7. **Why is the aerial RIS worse?** A 4th drone burns ~126–178 W continuously (+20 % for the
    payload); the extra bits do not pay for it.
 8. **How do you know results are not luck?** Disjoint train/validation/test seeds, 100 fresh
