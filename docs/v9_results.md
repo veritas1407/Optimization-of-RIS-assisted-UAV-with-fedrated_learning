@@ -156,7 +156,11 @@ Paired by seed (same initialisation and training missions):
 
 **What this shows**
 1. **Local models overfit their own layout.** On their own area they score 8,167 bit/J; on
-   unseen areas 7,581 (−7 %), and the four area models differ from each other by ~160 bit/J.
+   unseen areas 7,581 (−7 %). Part of that drop is that the training areas happen to be
+   easier, so the cross-area matrix (`results_v9/multiarea/crossarea.json`: each area's model
+   flown in every training area, 5 seeds × 24 missions) compares models **on the same area**:
+   the area's own model beats the other areas' models there by +3.4 / +3.8 / +9.7 / +9.6 %
+   (mean **+6.6 %**). The overfitting is real, not an artefact of area difficulty.
 2. **FedAvg recovers most of what pooling gains** (+373 of +581 bit/J over local, i.e. 64 %)
    while sending 8.8× less cross-area traffic than pooling and **no raw data**. Counting the
    within-area traffic (UAVs ↔ ground station, 1,126 MB in every mode) as well, the total
