@@ -1,0 +1,196 @@
+{
+  "target": "fedhet",
+  "centralized": false,
+  "params": {
+    "margin": 0.95,
+    "vcap": 12.0,
+    "need_w": 0.6,
+    "dscale": 3000.0,
+    "inactive_w": 0.1,
+    "orbit_r": 40.0,
+    "sep_margin": 2.5
+  },
+  "val": {
+    "ee": 7949.857776830872,
+    "reached_final": 1.0,
+    "collisions": 0.075,
+    "delivered_frac": 0.6454476792566882
+  },
+  "val_default_params": {
+    "ee": 7126.57195995286,
+    "reached_final": 1.0,
+    "collisions": 0.2,
+    "delivered_frac": 0.613786844941252
+  },
+  "n_candidates": 150,
+  "n_val_stage1": 20,
+  "n_val_stage2": 80,
+  "seconds": 97.22964215278625,
+  "stage2": [
+    {
+      "params": {
+        "margin": 1.3,
+        "vcap": 15.0,
+        "need_w": 0.6,
+        "dscale": 600.0,
+        "inactive_w": 0.25,
+        "orbit_r": 5.0,
+        "sep_margin": 3.0
+      },
+      "ee": 7783.368521627272,
+      "reached_final": 1.0,
+      "collisions": 0.1125,
+      "delivered_frac": 0.6512022334264759
+    },
+    {
+      "params": {
+        "margin": 1.0,
+        "vcap": 12.0,
+        "need_w": 0.6,
+        "dscale": 3000.0,
+        "inactive_w": 0.1,
+        "orbit_r": 25.0,
+        "sep_margin": 4.0
+      },
+      "ee": 7882.214240219412,
+      "reached_final": 1.0,
+      "collisions": 0.05,
+      "delivered_frac": 0.6467545401828566
+    },
+    {
+      "params": {
+        "margin": 0.95,
+        "vcap": 20.0,
+        "need_w": 1.0,
+        "dscale": 300.0,
+        "inactive_w": 0.1,
+        "orbit_r": 15.0,
+        "sep_margin": 3.0
+      },
+      "ee": 7783.622711169829,
+      "reached_final": 1.0,
+      "collisions": 0.3,
+      "delivered_frac": 0.6705306738761638
+    },
+    {
+      "params": {
+        "margin": 1.05,
+        "vcap": 20.0,
+        "need_w": 1.0,
+        "dscale": 150.0,
+        "inactive_w": 0.1,
+        "orbit_r": 15.0,
+        "sep_margin": 4.0
+      },
+      "ee": 7854.191149663163,
+      "reached_final": 1.0,
+      "collisions": 0.0625,
+      "delivered_frac": 0.6721712093951778
+    },
+    {
+      "params": {
+        "margin": 1.15,
+        "vcap": 15.0,
+        "need_w": 0.6,
+        "dscale": 3000.0,
+        "inactive_w": 0.25,
+        "orbit_r": 15.0,
+        "sep_margin": 3.0
+      },
+      "ee": 7887.341185600575,
+      "reached_final": 1.0,
+      "collisions": 0.325,
+      "delivered_frac": 0.6576689801897928
+    },
+    {
+      "params": {
+        "margin": 1.3,
+        "vcap": 20.0,
+        "need_w": 1.0,
+        "dscale": 300.0,
+        "inactive_w": 0.1,
+        "orbit_r": 15.0,
+        "sep_margin": 4.0
+      },
+      "ee": 7808.035675964538,
+      "reached_final": 1.0,
+      "collisions": 0.075,
+      "delivered_frac": 0.672748303876649
+    },
+    {
+      "params": {
+        "margin": 1.05,
+        "vcap": 12.0,
+        "need_w": 0.6,
+        "dscale": 3000.0,
+        "inactive_w": 0.5,
+        "orbit_r": 40.0,
+        "sep_margin": 2.5
+      },
+      "ee": 7822.068872735532,
+      "reached_final": 1.0,
+      "collisions": 0.225,
+      "delivered_frac": 0.6367992953629361
+    },
+    {
+      "params": {
+        "margin": 0.95,
+        "vcap": 12.0,
+        "need_w": 1.0,
+        "dscale": 3000.0,
+        "inactive_w": 0.1,
+        "orbit_r": 25.0,
+        "sep_margin": 2.5
+      },
+      "ee": 7843.50044339564,
+      "reached_final": 1.0,
+      "collisions": 0.1875,
+      "delivered_frac": 0.6384736207431844
+    },
+    {
+      "params": {
+        "margin": 1.0,
+        "vcap": 20.0,
+        "need_w": 0.6,
+        "dscale": 3000.0,
+        "inactive_w": 0.1,
+        "orbit_r": 15.0,
+        "sep_margin": 4.0
+      },
+      "ee": 7833.965011090913,
+      "reached_final": 1.0,
+      "collisions": 0.1125,
+      "delivered_frac": 0.6833233424381365
+    },
+    {
+      "params": {
+        "margin": 0.95,
+        "vcap": 12.0,
+        "need_w": 0.6,
+        "dscale": 3000.0,
+        "inactive_w": 0.1,
+        "orbit_r": 40.0,
+        "sep_margin": 2.5
+      },
+      "ee": 7949.857776830872,
+      "reached_final": 1.0,
+      "collisions": 0.075,
+      "delivered_frac": 0.6454476792566882
+    },
+    {
+      "params": {
+        "margin": 1.15,
+        "vcap": 20.0,
+        "need_w": 0.35,
+        "dscale": 150.0,
+        "inactive_w": 0.5,
+        "orbit_r": 15.0,
+        "sep_margin": 3.0
+      },
+      "ee": 7126.57195995286,
+      "reached_final": 1.0,
+      "collisions": 0.2,
+      "delivered_frac": 0.613786844941252
+    }
+  ]
+}
