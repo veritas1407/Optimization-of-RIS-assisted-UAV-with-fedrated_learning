@@ -412,7 +412,8 @@ def plot_ris_value():
 
 SWEEP_TITLES = {"ris_size": "RIS elements L", "phase_bits": "RIS phase bits (0 = continuous)",
                 "phase_err_deg": "random phase error (deg, std)", "p_tx_dbm": "device transmit power (dBm)",
-                "data_scale": "data per device (× 10–30 Mbit)", "arbitration": "RIS setting"}
+                "data_scale": "data per device (× 10–30 Mbit)", "arbitration": "RIS setting",
+                "csi_nmse_db": "channel-estimate error NMSE (dB)"}
 
 
 def plot_sweeps(preset="building"):
@@ -422,12 +423,13 @@ def plot_sweeps(preset="building"):
     if not files:
         print("no sweeps")
         return
-    fig, axes = plt.subplots(2, 3, figsize=(16, 8.5))
+    nr = int(np.ceil(len(files) / 3))
+    fig, axes = plt.subplots(nr, 3, figsize=(16, 4.25 * nr))
     for ax, f in zip(axes.ravel(), files):
         rows = _read_csv(f)
         name = rows[0]["param"]
         vals = list(dict.fromkeys(r["value"] for r in rows))
-        cat = name == "arbitration"
+        cat = name in ("arbitration", "csi_nmse_db")
         x = np.arange(len(vals)) if cat or name == "phase_bits" else np.array([float(v) for v in vals])
         pols = list(dict.fromkeys(r["policy"] for r in rows))
         for i, pol in enumerate(pols):

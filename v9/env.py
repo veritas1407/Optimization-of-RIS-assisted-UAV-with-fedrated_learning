@@ -370,9 +370,21 @@ class RISUAVEnv:
             h_ir = np.zeros((self.I, 1), complex)
             h_ru = np.zeros((self.K, 1), complex)
 
-        g_dir = np.abs(h_d) ** 2
-        if cfg.arbitration in ("timeshare", "common"):
-            g_best = np.maximum(g_dir, ph.best_aligned_gain(h_d, h_ru, h_ir))
+        # channel knowledge used for decisions (scheduling, RIS phases): perfect by default,
+        # or estimates with a given normalised mean-squared error (imperfect CSI study)
+        if cfg.csi_nmse_db is not None and self.use_ris:
+            nm = 10.0 ** (cfg.csi_nmse_db / 10.0)
+
+            def est(h, axis):
+                pw = np.mean(np.abs(h) ** 2, axis=axis, keepdims=True)
+                noise = self.rng_ris.standard_normal(h.shape) + 1j * self.rng_ris.standard_normal(h.shape)
+                return h + np.sqrt(nm * pw / 2.0) * noise
+            e_d, e_ru, e_ir = est(h_d, None), est(h_ru, 1), est(h_ir, 1)
+        else:
+            e_d, e_ru, e_ir = h_d, h_ru, h_ir
+        g_dir = np.abs(e_d) ** 2
+        if cfg.arbitration in ("timeshare", "common", "opt"):
+            g_best = np.maximum(g_dir, ph.best_aligned_gain(e_d, e_ru, e_ir))
         else:
             g_best = g_dir
         r_est = ph.rate_bps(g_best, cfg, self.p_w, self.noise_w)
@@ -407,6 +419,8 @@ class RISUAVEnv:
                 k_of = served[idx]
                 dep = idx[g_best[idx, k_of] > 2.0 * g_dir[idx, k_of]]
                 left = np.maximum(self.win_end - t0, cfg.dt)
+                if cfg.arbitration == "opt":   # candidates: every served link the RIS can reach
+                    dep = idx[np.abs(h_ir[idx]).sum(1) > 0]
                 order = dep[np.argsort(-(self.remaining[dep] / left[dep]))]
                 if cfg.arbitration == "common":
                     order = order[:1]
@@ -417,15 +431,20 @@ class RISUAVEnv:
                 ris_targets = [(int(i), int(served[i])) for i in order]
                 if ris_targets:
                     thetas = np.stack([
-                        ph.aligned_phases(h_d[i, k], h_ru[k], h_ir[i], cfg.ris.bits,
+                        ph.aligned_phases(e_d[i, k], e_ru[k], e_ir[i], cfg.ris.bits,
                                           cfg.ris.phase_err_deg, self.rng_ris)
                         for i, k in ris_targets])
         if thetas is None:
-            gains = g_dir[None]
+            gains = np.abs(h_d)[None] ** 2
+            w = np.ones(1)
         else:
-            gains = ph.composite(h_d, h_ru, h_ir, thetas)
-        rates = ph.rate_bps(gains, cfg, self.p_w, self.noise_w).mean(axis=0)   # (I, K)
-        eff_gain = gains.mean(axis=0)
+            gains = ph.composite(h_d, h_ru, h_ir, thetas)              # true channels
+            w = np.full(len(thetas), 1.0 / len(thetas))                 # equal time shares
+            if cfg.arbitration == "opt" and len(thetas) > 1:
+                w = self._opt_shares(ph.composite(e_d, e_ru, e_ir, thetas), served)
+        rate_c = ph.rate_bps(gains, cfg, self.p_w, self.noise_w)        # (C, I, K)
+        rates = np.tensordot(w, rate_c, axes=1)                         # (I, K)
+        eff_gain = np.tensordot(w, gains, axes=1)
         self.last_snr_db = 10.0 * np.log10(np.maximum(self.p_w * eff_gain / self.noise_w, 1e-3))
 
         bits = np.zeros(self.I)
@@ -434,6 +453,23 @@ class RISUAVEnv:
             bits[idx] = np.minimum(self.remaining[idx], rates[idx, served[idx]] * cfg.dt)
             self.remaining[idx] -= bits[idx]
         return bits, served, ris_targets, eff_gain
+
+    def _opt_shares(self, gains_est, served, n_chunks: int = 20) -> np.ndarray:
+        """Time shares of the RIS configurations within the slot that maximise the bits the
+        served devices can deliver: max_tau sum_i min(remaining_i, dt * sum_c tau_c r_ci),
+        sum_c tau_c = 1 (concave; solved by greedy allocation of 1/n_chunks slices)."""
+        cfg = self.cfg
+        idx = np.where(served >= 0)[0]
+        r = ph.rate_bps(gains_est[:, idx, served[idx]], cfg, self.p_w, self.noise_w) * cfg.dt   # (C, n)
+        cap = self.remaining[idx]
+        tau = np.zeros(len(gains_est))
+        cur = np.zeros(len(idx))
+        for _ in range(n_chunks):
+            gain = np.minimum(cap, cur[None] + r / n_chunks).sum(1) - np.minimum(cap, cur).sum()
+            c = int(np.argmax(gain))
+            tau[c] += 1.0 / n_chunks
+            cur = cur + r[c] / n_chunks
+        return tau
 
     # ------------------------------------------------------------ observations
 

@@ -238,6 +238,40 @@ def exp_fedhet_baselines(args):
     _write_csv(RESULTS / "fedhet" / "baselines.csv", rows)
 
 
+def exp_crossarea(args):
+    """Model trained in area i, flown in area j (local mode checkpoints, all seeds): separates
+    'overfitting to the own layout' from 'some areas are simply easier'."""
+    import torch
+
+    from .config import TRAIN_AREAS, random_area
+    from .env import RISUAVEnv
+    from .multiarea import ActorPolicy
+    from .ppo import Actor
+    from .baselines import run_episode
+
+    n = len(TRAIN_AREAS)
+    envs = [RISUAVEnv(random_area(s)) for s in TRAIN_AREAS]
+    seeds = sorted(int(p.name[4:]) for p in (RESULTS / "multiarea" / "local").glob("seed*"))
+    M = np.zeros((len(seeds), n, n))
+    for si, sd in enumerate(seeds):
+        for i in range(n):
+            actor = Actor(envs[0].obs_dim)
+            actor.load_state_dict(torch.load(RESULTS / "multiarea" / "local" / f"seed{sd}" / f"best_area{i}.pt"))
+            pol = ActorPolicy(actor).policy
+            for j in range(n):
+                M[si, i, j] = np.mean([run_episode(envs[j], pol, TEST_SEED_BASE + e)["ee"] for e in range(args.n_eval)])
+        print(f"  seed {sd}:\n" + "\n".join("   " + " ".join(f"{v:7.0f}" for v in row) for row in M[si]), flush=True)
+    mean = M.mean(0)
+    own = np.mean([np.diag(m).mean() for m in M])
+    other = np.mean([(m.sum() - np.trace(m)) / (n * n - n) for m in M])
+    out = {"train_areas": list(TRAIN_AREAS), "seeds": seeds, "n_missions": args.n_eval,
+           "matrix_mean": mean.tolist(), "own_area_mean": float(own), "other_area_mean": float(other),
+           "column_mean_per_area": mean.mean(0).tolist(),
+           "own_minus_other_pct": float(100 * (own / other - 1))}
+    (RESULTS / "multiarea" / "crossarea.json").write_text(json.dumps(out, indent=2))
+    print(json.dumps({k: v for k, v in out.items() if k != "matrix_mean"}, indent=2))
+
+
 def exp_finetune(args):
     from .fedhet import finetune
 
@@ -274,7 +308,9 @@ SWEEPS = {
     "phase_err_deg": ([0, 10, 20, 40], lambda v: {"ris": ("phase_err_deg", v)}),
     "p_tx_dbm": ([0, 5, 10, 15, 20], lambda v: {"p_tx_dbm": float(v)}),
     "data_scale": ([0.5, 1.0, 1.5, 2.0], lambda v: {"data_mbit": (10.0 * v, 30.0 * v)}),
-    "arbitration": (["none", "random", "common", "timeshare"], lambda v: {"arbitration": v}),
+    "arbitration": (["none", "random", "common", "timeshare", "opt"], lambda v: {"arbitration": v}),
+    "csi_nmse_db": (["perfect", -20, -10, -5, 0],
+                    lambda v: {"csi_nmse_db": None if v == "perfect" else float(v)}),
 }
 
 
@@ -360,7 +396,7 @@ def exp_multiarea_baselines(args):
 def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument("--exp", required=True, choices=["gate", "train", "multiarea", "multiarea_baselines", "sweep",
-                                                    "fedhet", "finetune", "fedhet_baselines"])
+                                                    "fedhet", "finetune", "fedhet_baselines", "crossarea"])
     p.add_argument("--participation", type=float, default=0.5)
     p.add_argument("--compress", default="none", choices=["none", "q8", "top10"])
     p.add_argument("--mode", default="fedavg", choices=["local", "fedavg", "fedprox", "pooled"])
@@ -389,7 +425,8 @@ def main(argv=None):
     torch.set_num_threads(1)   # small networks; several runs share the machine
     {"gate": exp_gate, "train": exp_train, "multiarea": exp_multiarea,
      "multiarea_baselines": exp_multiarea_baselines, "sweep": exp_sweep, "fedhet": exp_fedhet,
-     "finetune": exp_finetune, "fedhet_baselines": exp_fedhet_baselines}[args.exp](args)
+     "finetune": exp_finetune, "fedhet_baselines": exp_fedhet_baselines,
+     "crossarea": exp_crossarea}[args.exp](args)
     print(f"done in {time.time() - t:.1f}s")
 
 

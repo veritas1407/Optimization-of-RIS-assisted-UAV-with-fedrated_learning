@@ -179,3 +179,23 @@ def test_separation_layer_keeps_uavs_apart():
 def test_autopilot_does_not_cause_separation_violations():
     m = run_episode(RISUAVEnv(building()), Greedy(), seed=2_000_000)   # leaves late -> autopilot flies home
     assert m["rth_frac"] > 0 and m["collisions"] <= 1
+
+
+def test_opt_shares_maximise_deliverable_bits():
+    env = RISUAVEnv(replace(building(), arbitration="opt"))
+    env.reset(seed=0)
+    served = np.full(env.I, -1)
+    served[0], served[1] = 0, 1
+    env.remaining[:2] = [1e9, 1.0]                     # device 1 needs almost nothing
+    g = np.zeros((2, env.I, env.K))
+    g[0, 0, 0], g[1, 1, 1] = 1e-9, 1e-9               # config c serves device c only
+    tau = env._opt_shares(g, served)
+    assert tau.sum() == pytest.approx(1.0) and tau[0] >= 0.95
+
+
+def test_imperfect_csi_lowers_ee_and_perfect_is_default():
+    cfg = building()
+    assert cfg.csi_nmse_db is None
+    good = run_episode(RISUAVEnv(cfg), straight_policy, seed=5_000_001)["ee"]
+    bad = run_episode(RISUAVEnv(replace(cfg, csi_nmse_db=0.0)), straight_policy, seed=5_000_001)["ee"]
+    assert bad < good

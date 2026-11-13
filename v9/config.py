@@ -107,7 +107,8 @@ class ScenarioConfig:
 
     # RIS
     ris: RISConfig = field(default_factory=RISConfig)
-    arbitration: str = "timeshare"    # "timeshare" | "common" | "random" | "none"
+    arbitration: str = "timeshare"    # "timeshare" | "opt" | "common" | "random" | "none"
+    csi_nmse_db: float | None = None  # None = perfect CSI; else NMSE (dB) of the channel estimates
 
     # Propulsion (Zeng, Xu, Zhang 2019 rotary-wing model)
     P_B: float = 79.8563
