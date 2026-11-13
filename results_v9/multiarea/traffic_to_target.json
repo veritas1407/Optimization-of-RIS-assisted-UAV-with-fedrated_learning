@@ -1,0 +1,42 @@
+[
+  {
+    "method": "local",
+    "total_MB_final": 1125.576,
+    "MB_to_val_7600": 862.9416000000001,
+    "seeds_reaching_7600": 4,
+    "MB_to_val_7800": NaN,
+    "seeds_reaching_7800": 0,
+    "MB_to_val_8000": NaN,
+    "seeds_reaching_8000": 0
+  },
+  {
+    "method": "fedavg_E4",
+    "total_MB_final": 1213.582272,
+    "MB_to_val_7600": 291.1461888,
+    "seeds_reaching_7600": 5,
+    "MB_to_val_7800": 404.527424,
+    "seeds_reaching_7800": 5,
+    "MB_to_val_8000": 647.0546175999999,
+    "seeds_reaching_8000": 5
+  },
+  {
+    "method": "fedavg_E4_both",
+    "total_MB_final": 1637.1771840000001,
+    "MB_to_val_7600": 392.2623936,
+    "seeds_reaching_7600": 5,
+    "MB_to_val_7800": 611.6529023999999,
+    "seeds_reaching_7800": 5,
+    "MB_to_val_8000": 845.5998239999999,
+    "seeds_reaching_8000": 4
+  },
+  {
+    "method": "pooled",
+    "total_MB_final": 1896.288,
+    "MB_to_val_7600": 252.8384,
+    "seeds_reaching_7600": 5,
+    "MB_to_val_7800": 353.97376,
+    "seeds_reaching_7800": 5,
+    "MB_to_val_8000": 632.096,
+    "seeds_reaching_8000": 5
+  }
+]

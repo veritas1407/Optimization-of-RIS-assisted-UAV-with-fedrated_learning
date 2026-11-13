@@ -165,9 +165,27 @@ Paired by seed (same initialisation and training missions):
    while sending 8.8× less cross-area traffic than pooling and **no raw data**. Counting the
    within-area traffic (UAVs ↔ ground station, 1,126 MB in every mode) as well, the total
    saving is 1.6× (1,214 vs 1,896 MB per run).
-3. **Averaging only the actors is enough**; averaging the critics too costs 5.8× the traffic
+3. **Traffic needed to reach a given quality** (`fig_traffic_to_target.png`,
+   `traffic_to_target.json`; total traffic = cross-area + UAVs ↔ ground station; validation
+   EE on unseen areas, mean over seeds):
+
+   | Mode | MB to reach 7,600 | MB to reach 7,800 | MB to reach 8,000 | total MB per run |
+   |---|---|---|---|---|
+   | Local only | 863 (4 of 5 seeds) | never | never | 1,126 |
+   | **FedAvg (actors)** | **291** | **405** | **647** | 1,214 |
+   | FedAvg (actors + critics) | 392 | 612 | 846 (4 of 5) | 1,637 |
+   | Pooled raw data | 253 | 354 | 632 | 1,896 |
+
+   FedAvg reaches the same validation quality as pooling for about the same total traffic
+   (647 vs 632 MB to reach 8,000) without moving raw data, while local training never gets
+   there.
+   **Energy of this traffic is negligible:** even if every within-area byte is sent by a UAV
+   radio (0.5 W at 10 Mbit/s ≈ 0.4 J/MB), 1,126 MB over 12,000 training missions is ≈ 0.04 J
+   per mission, about 10⁻⁶ of the ≈ 42.6 kJ flight energy; cross-area traffic runs on the
+   ground stations' backhaul and costs the UAVs nothing.
+4. **Averaging only the actors is enough**; averaging the critics too costs 5.8× the traffic
    for nothing.
-4. Against heuristics on unseen areas: pooled learning (8,162) is level with the tuned
+5. Against heuristics on unseen areas: pooled learning (8,162) is level with the tuned
    decentralised heuristic (8,052 ± 167; overlapping intervals), FedAvg slightly below, and
    the centralised full-information heuristic remains best (8,470). Note that the heuristics
    were tuned on the 4 validation areas — the same areas the learned models use for

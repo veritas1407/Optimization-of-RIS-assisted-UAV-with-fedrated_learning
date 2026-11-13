@@ -360,6 +360,45 @@ def plot_multiarea():
               f"  intra-area {r['comm_intra_MB_mean']:7.1f} MB{own}")
 
 
+def plot_traffic_to_target(targets=(7600, 7800, 8000)):
+    """Validation EE on unseen areas vs TOTAL training traffic (cross-area + within-area), and
+    the traffic each mode needs to first reach a target validation EE (mean over seeds)."""
+    import json
+    root = RESULTS / "multiarea"
+    order = [m for m in ("local", "fedavg_E4", "fedavg_E4_both", "pooled") if (root / m).exists()]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    table = []
+    for tag in order:
+        curves = []
+        for sd in sorted((root / tag).glob("seed*")):
+            ev, tr = _read_csv(sd / "eval_log.csv"), _read_csv(sd / "train_log.csv")
+            intra = {int(r["episodes_per_area"]): float(r["comm_intra_MB"]) for r in tr}
+            x = np.array([float(r["comm_MB"]) + intra[int(r["episodes_per_area"])] for r in ev])
+            y = np.array([float(r["val_ee_mean"]) for r in ev])
+            curves.append((x, y))
+        n = min(len(c[0]) for c in curves)
+        X = np.mean([c[0][:n] for c in curves], 0)
+        Y = np.array([c[1][:n] for c in curves])
+        ax.plot(X, Y.mean(0), lw=2, label=MA_LABELS.get(tag, tag).replace("\n", " "))
+        ax.fill_between(X, Y.mean(0) - Y.std(0, ddof=1), Y.mean(0) + Y.std(0, ddof=1), alpha=0.15)
+        row = {"method": tag, "total_MB_final": float(X[-1])}
+        for t in targets:
+            hits = [c[0][np.argmax(c[1] >= t)] if (c[1] >= t).any() else np.nan for c in curves]
+            row[f"MB_to_val_{t}"] = float(np.nanmean(hits)) if np.isfinite(hits).any() else np.nan
+            row[f"seeds_reaching_{t}"] = int(np.isfinite(hits).sum())
+        table.append(row)
+    ax.set_xlabel("total training traffic so far (MB: cross-area + UAVs↔ground station)")
+    ax.set_ylabel("EE on unseen validation areas (bit/J)")
+    ax.set_ylim(0, None)
+    ax.set_title("What each mode gets for its traffic (band = ± 1 std over seeds)")
+    ax.legend(fontsize=8, loc="lower right")
+    fig.savefig(root / "fig_traffic_to_target.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    (root / "traffic_to_target.json").write_text(json.dumps(table, indent=2))
+    for r in table:
+        print("  " + "  ".join(f"{k} {v:.0f}" if isinstance(v, float) else f"{k} {v}" for k, v in r.items()))
+
+
 def plot_ris_value():
     """No RIS vs building RIS vs aerial RIS, for the tuned heuristic and learned MAPPO."""
     import json
@@ -473,6 +512,7 @@ if __name__ == "__main__":
     if cmd == "multiarea":
         plot_area_maps()
         plot_multiarea()
+        plot_traffic_to_target()
     if cmd == "gate":
         plot_gate()
     elif cmd == "train":
