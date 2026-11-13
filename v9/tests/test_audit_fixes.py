@@ -201,11 +201,12 @@ def test_imperfect_csi_lowers_ee_and_perfect_is_default():
     assert bad < good
 
 
-def test_greedy_sees_the_ris_under_every_aligned_arbitration():
-    from v9.config import ScenarioConfig
-    import inspect
-    from v9 import baselines
-    src = inspect.getsource(baselines.Greedy.__call__)
-    for mode in ("timeshare", "common", "opt"):
-        assert f'"{mode}"' in src
-    assert "opt" in ScenarioConfig.__dataclass_fields__["arbitration"].default or True
+def test_greedy_behaves_the_same_under_timeshare_and_opt_when_one_link_needs_the_ris():
+    """Regression: Greedy used to treat arbitration="opt" as "no RIS" and changed its route."""
+    cfg = building()
+    acts = []
+    for arb in ("timeshare", "opt"):
+        env = RISUAVEnv(replace(cfg, arbitration=arb))
+        obs, _ = env.reset(seed=3)
+        acts.append(Greedy()(env, obs))
+    assert np.allclose(acts[0], acts[1])
