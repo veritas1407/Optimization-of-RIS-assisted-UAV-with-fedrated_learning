@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RIS-assisted UAVs with federated learning: 3-D simulation video</title>
+<style>
+  html, body { margin: 0; background: #000; overflow: hidden; }
+  #gl { position: absolute; left: 0; top: 0; display: block; }
+  #ov { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; pointer-events: none;
+        font-family: "Inter", "Helvetica Neue", "Liberation Sans", Arial, "DejaVu Sans", sans-serif; color: #fff; }
+  #ov * { box-sizing: border-box; }
+  .abs { position: absolute; }
+  #fade { left: 0; top: 0; width: 1920px; height: 1080px; background: #05070c; opacity: 0; }
+  #dim { left: 0; top: 0; width: 1920px; height: 1080px; background: #0a1220; opacity: 0; }
+  .hud { background: rgba(10, 16, 28, 0.78); border: 1px solid rgba(255,255,255,0.16); border-radius: 14px; padding: 16px 22px;
+         font-size: 27px; line-height: 1.5; font-variant-numeric: tabular-nums; min-width: 330px; }
+  .hud .ttl { font-size: 21px; letter-spacing: 0.06em; text-transform: uppercase; color: #ffd66b; margin-bottom: 4px; font-weight: 700; }
+  .hud .row { display: flex; justify-content: space-between; gap: 26px; }
+  .hud .k { color: #a9b6c9; } .hud .v { font-weight: 700; }
+  .hud .row.hl .v { color: #ff9a8a; } .hud .row.ee .v { color: #7dffa8; }
+  #caption { left: 0; right: 0; bottom: 0; padding: 90px 96px 54px; text-align: center; font-size: 36px; font-weight: 600; line-height: 1.25;
+             background: linear-gradient(rgba(5,8,14,0), rgba(5,8,14,0.62) 55%); text-shadow: 0 2px 10px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.9); }
+  #caption .sub { display: block; font-size: 27px; font-weight: 500; color: #dfe7f3; margin-top: 6px; }
+  #lower { left: 96px; top: 60px; font-size: 25px; letter-spacing: 0.14em; text-transform: uppercase; font-weight: 700; color: #ffd66b;
+           text-shadow: 0 2px 8px rgba(0,0,0,0.85); }
+  #lower .n { color: #fff; opacity: 0.75; margin-right: 14px; }
+  #scale { right: 96px; top: 56px; font-size: 21px; color: #eef3fa; text-align: right; line-height: 1.4; background: rgba(10,16,28,0.6); padding: 6px 14px; border-radius: 9px; }
+  #title { left: 0; top: 0; width: 1920px; height: 1080px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+  #title h1 { font-size: 74px; margin: 0 140px; line-height: 1.12; font-weight: 800; text-shadow: 0 4px 24px rgba(0,0,0,0.85); }
+  #title h2 { font-size: 34px; margin: 26px 200px 0; font-weight: 500; color: #e6edf7; text-shadow: 0 2px 12px rgba(0,0,0,0.9); }
+  #title .tag { margin-top: 34px; font-size: 22px; letter-spacing: 0.2em; text-transform: uppercase; color: #ffd66b; }
+  .card { background: rgba(10, 16, 28, 0.86); border: 1px solid rgba(255,255,255,0.18); border-radius: 18px; padding: 22px 30px; font-size: 31px; line-height: 1.35; }
+  .card b { color: #ffd66b; } .card .big { font-size: 46px; font-weight: 800; }
+  .card .good { color: #7dffa8; } .card .bad { color: #ff9a8a; } .card small { font-size: 23px; color: #c9d4e3; }
+  .lbl { font-size: 22px; font-weight: 600; padding: 4px 11px; border-radius: 8px; background: rgba(10,16,28,0.72); border: 1px solid rgba(255,255,255,0.22);
+         white-space: nowrap; transform: translate(-50%, -100%); }
+  .lbl.red { border-color: #ff6b6b; color: #ffd0d0; } .lbl.gold { border-color: #ffd66b; color: #fff1c4; } .lbl.sm { font-size: 17px; padding: 2px 8px; font-weight: 500; }
+  .split { top: 0; width: 4px; height: 1080px; left: 958px; background: rgba(255,255,255,0.85); }
+  .side { top: 60px; font-size: 30px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; text-shadow: 0 2px 10px rgba(0,0,0,0.9); }
+  #pip { border: 2px solid #ffd66b; border-radius: 6px; box-shadow: 0 0 0 1px rgba(0,0,0,0.6); }
+  #pipl { font-size: 17px; color: #fff1c4; text-align: center; text-shadow: 0 1px 5px rgba(0,0,0,0.95); line-height: 1.25; }
+  #results { left: 210px; top: 215px; width: 1500px; }
+  #results h3 { font-size: 30px; letter-spacing: 0.16em; text-transform: uppercase; color: #ffd66b; margin: 0 0 20px; }
+  #results .line { display: flex; gap: 26px; align-items: baseline; font-size: 35px; padding: 15px 0; border-bottom: 1px solid rgba(255,255,255,0.14); }
+  #results .line .h { flex: 0 0 330px; font-weight: 800; } #results .line .t { flex: 1; color: #eaf0f8; }
+  #results .foot { font-size: 23px; color: #b9c6d8; margin-top: 22px; }
+  #fltext { left: 96px; top: 150px; width: 620px; } #fltext .card { margin-bottom: 16px; font-size: 28px; }
+  #flleg { left: 96px; bottom: 70px; width: 620px; font-size: 22px; line-height: 1.6; text-align: left; }
+  #flleg .dot { display: inline-block; width: 15px; height: 15px; border-radius: 50%; margin-right: 10px; vertical-align: middle; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./node_modules/three/build/three.module.js", "three/addons/": "./node_modules/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="ov">
+  <div id="dim" class="abs"></div>
+  <div id="labels" class="abs" style="left:0;top:0"></div>
+  <div id="lower" class="abs"></div>
+  <div id="scale" class="abs"></div>
+  <div id="hudL" class="abs hud" style="left:96px;top:118px"></div>
+  <div id="hudR" class="abs hud" style="left:1056px;top:118px"></div>
+  <div id="sideL" class="abs side" style="left:96px;color:#ffd66b"></div>
+  <div id="sideR" class="abs side" style="left:1056px;color:#cfd8e6"></div>
+  <div id="split" class="abs split"></div>
+  <div id="pip" class="abs"></div>
+  <div id="pipl" class="abs"></div>
+  <div id="cardA" class="abs card"></div>
+  <div id="cardB" class="abs card"></div>
+  <div id="fltext" class="abs"></div>
+  <div id="flleg" class="abs card"></div>
+  <div id="results" class="abs card"></div>
+  <div id="caption" class="abs"></div>
+  <div id="title" class="abs"></div>
+  <div id="fade" class="abs"></div>
+</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

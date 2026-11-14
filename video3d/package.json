@@ -1,0 +1,7 @@
+{
+  "name": "video3d",
+  "private": true,
+  "type": "module",
+  "description": "3-D simulation video of the RIS-assisted UAV + federated-learning project (driven by recorded traces)",
+  "dependencies": { "three": "0.160.0" }
+}
