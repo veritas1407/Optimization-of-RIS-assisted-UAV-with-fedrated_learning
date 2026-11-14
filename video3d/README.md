@@ -44,5 +44,11 @@ Open `index.html` through any static file server rooted at the repository (the p
 | Playwright + Chromium | the preinstalled build (chromium-1243); any recent version works |
 | ffmpeg | 6.1.1 |
 
-Render time on a 4-core CPU without GPU (software WebGL): about 50 minutes for the full
-video (≈ 1.5 frames/s), about 2 minutes for the preview.
+Render time on a 4-core CPU without GPU (software WebGL): 53 minutes for the full video
+(4,380 frames, ≈ 1.4 frames/s), about 2 minutes for the preview.
+
+## Outputs (in `results_v9/animation/`)
+
+- `ris_uav_3d.mp4`: the full video (146 s).
+- `ris_uav_3d_highlight.mp4`: 20 s cut of shots 4–6 (RIS beams, mission start, with/without comparison).
+- `stills_3d/`: six 1920×1080 PNG stills rendered directly (not taken from the compressed video).
