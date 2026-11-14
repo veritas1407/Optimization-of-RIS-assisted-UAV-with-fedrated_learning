@@ -30,6 +30,8 @@ v9/analysis.py    static link-budget analysis (coverage maps, upload-time table)
 v9/ppo.py         squashed-Gaussian actor, critic, GAE, PPO update (+ FedProx term)
 v9/trainers.py    ctde / ippo / fedavg / fedprox / fedper training loops, comm metering, checkpoints
 v9/multiarea.py   multi-area hierarchical FL (local / fedavg / pooled)
+v9/fedhet.py      heterogeneous FL: non-IID areas, partial participation, FedProx, compressed updates, fine-tuning
+v9/animate.py     side-by-side mission animations (mp4)
 v9/stats.py       95 % confidence intervals, paired differences
 v9/run.py         CLI entry point for one experiment
 v9/launch.py      runs groups of experiments in parallel (pilots, campaign, post)
@@ -82,6 +84,14 @@ ground-up explanation: [`docs/v9_explained.md`](../docs/v9_explained.md). Headli
   7,581 ± 115 (+4.9 %, all 5 seeds) vs pooled raw data 8,162 ± 59; FedAvg recovers 64 % of
   the pooling gain with 8.8× less cross-area traffic (1.6× less in total) and no raw data
   leaving an area.
+
+* **v9.2 (after an independent review):** equal-data control (FedAvg still +3.8 % over a
+  local model trained on 4× its own data); **heterogeneous FL** with 12 non-IID areas and
+  50 % participation: FedAvg +9.7 % over local, at least as good as pooled raw data with 13×
+  less traffic, 8-bit / top-10 % uploads at no measurable cost; few-shot fine-tuning of the
+  global model +16 % over training from scratch and above the like-for-like heuristic;
+  optimised RIS time shares (+0.3–0.7 %); imperfect-CSI sweep; formal problem P1;
+  animations in `results_v9/animation/`.
 
 ## Known limitations
 

@@ -458,6 +458,26 @@ learning alone.
 
 ---
 
+### 9.4 The harder FL setting (v9.2): non-IID areas, partial participation, compression
+
+**Intuition.** Real city areas differ in more than layout: some have many sensors, some few;
+some sensors hold a lot of data, some little; transmitters and panels differ. And in a real
+federation not every ground station is online every round. FL is supposed to shine exactly
+here — and that is where we now test it.
+
+**Precise** (`v9/fedhet.py`, `config.hetero_area`):
+- 12 training areas that differ in device count (15–31), data per device (×0.6–1.5), device
+  power (6–14 dBm) and RIS size (10×10 to 20×20); 4 validation and 8 test areas.
+- Each round the cloud samples **50 %** of the areas; each starts from the global actor, does
+  4 local MAPPO-CTDE updates and uploads its *update* (new weights − global weights).
+- Uploads can be **compressed**: 8-bit quantisation (1 byte per weight instead of 4), or
+  **top-10 %** sparsification (send only the 10 % largest changes, keep the rest in a local
+  "residual" that is added next time — error feedback — so nothing is lost for good).
+- Every mode (local, pooled, FedAvg, FedProx, compressed) uses the **same total number of
+  training missions**, so no mode wins by simply training more.
+- **Few-shot adaptation:** a new area's ground station takes the global model and fine-tunes
+  it on 320 of its own missions; compared with training from scratch on the same missions.
+
 ## Part 10 — The rivals (baselines) and why they matter
 
 **Intuition.** A learned policy is only impressive if it beats sensible hand-written rules.
@@ -625,7 +645,26 @@ bigger RIS helps steadily (64 → 400 elements: +12.6 % for CTDE).
 4. Federated learning's value here is **generalisation across areas without sharing raw
    data**, not better performance inside one area: inside one area averaging three UAVs'
    models costs a little; across areas, FedAvg clearly beats training each area alone at a
-   small fraction of pooling's traffic.
+   small fraction of pooling's traffic — +4.9 % with similar areas, **+9.7 % with
+   heterogeneous areas and 50 % participation**, where it even matches pooling all raw data,
+   and it survives 8-bit or top-10 % compression of the uploads.
+5. A federated model gives a new area a working policy immediately (+16 % over training from
+   scratch on the same missions) and, after a short local fine-tune, beats the like-for-like
+   heuristic — the one place where learning beats hand-tuning in this project.
+
+### 13.6 v9.2 additions (after the independent review)
+
+| Question | Experiment | Answer |
+|---|---|---|
+| Does FedAvg win only because its model saw more data? | each area trained alone on 4× its missions (`local_x4`) | No: 4× own data gives +1.1 % (n.s.); FedAvg is still +3.8 ± 1.2 % better (5/5 seeds) |
+| Do local models really overfit their own layout? | cross-area matrix (each area's model in every area) | Yes: on the same area, its own model is +6.6 % better than the others' |
+| Does FL help more when areas really differ? | 12 non-IID areas, 50 % participation | Yes: FedAvg +9.7 % over local (5/5), at least as good as pooling raw data with 13× less traffic |
+| Can the uploads be compressed? | 8-bit / top-10 % updates | Yes: −0.3 / −0.7 % (n.s.) for 38–40 % less traffic |
+| Does FedProx help? | μ = 0.01 | No (−1.1 %) |
+| Is the federated model useful in a brand-new area? | fine-tune 320 missions vs scratch | +16.2 % over scratch; after adaptation above the like-for-like heuristic in every seed (+2.1 %) |
+| Can the RIS time-sharing be optimised? | concave time-share optimisation | +0.3–0.7 %: the equal split is already near-optimal |
+| What if channel estimates are imperfect? | NMSE −20 … 0 dB in scheduling and RIS alignment | −2–4 % at −20 dB, −6–8 % at −10 dB, −13–16 % at 0 dB; learned policy degrades slightly more gracefully than the heuristic |
+| Is FL communication energy significant? | 0.4 J/MB UAV radio | ~0.04 J per mission vs ~42.6 kJ flight: negligible |
 
 ## Part 14 — Limitations (say these before an examiner does)
 
@@ -711,9 +750,11 @@ bigger RIS helps steadily (64 → 400 elements: +12.6 % for CTDE).
 5. **Then why use RL?** No hand-tuning per scenario (the heuristics needed separate tuning for
    every preset), and it is the substrate on which FL is studied; the multi-area experiment
    tests whether learned policies transfer to unseen layouts.
-6. **What does FL buy you?** Privacy (raw data stays in the area) and much less traffic than
-   pooling: across city areas FedAvg generalises 4.9 % better than each area learning alone
-   and gets 64 % of pooling's gain with 8.8× less cross-area traffic (1.6× less in total).
+6. **What does FL buy you?** Raw data stays in each area, and much less traffic than
+   pooling. Across similar areas FedAvg generalises 4.9 % better than each area alone (not
+   because of more data: 4× more own data gives only +1 %); across heterogeneous areas with
+   50 % participation +9.7 %, matching pooling with 13× less cross-area traffic; and a new
+   area gets a ready policy that fine-tunes past the like-for-like heuristic.
 7. **Why is the aerial RIS worse?** A 4th drone burns ~126–178 W continuously (+20 % for the
    payload); the extra bits do not pay for it.
 8. **How do you know results are not luck?** Disjoint train/validation/test seeds, 100 fresh
