@@ -399,6 +399,79 @@ def plot_traffic_to_target(targets=(7600, 7800, 8000)):
         print("  " + "  ".join(f"{k} {v:.0f}" if isinstance(v, float) else f"{k} {v}" for k, v in r.items()))
 
 
+HET_LABELS = {"local": "Local only", "pooled": "Pooled raw data", "fedavg_p0.5": "FedAvg, 50 % of areas/round",
+              "fedavg_p1": "FedAvg, all areas/round", "fedprox_p0.5": "FedProx, 50 %",
+              "fedavg_p0.5_q8": "FedAvg 50 %, 8-bit updates", "fedavg_p0.5_top10": "FedAvg 50 %, top-10 % updates"}
+
+
+def plot_fedhet():
+    """Heterogeneous multi-area FL: EE on 8 unseen non-IID areas vs cross-area traffic,
+    paired comparisons by seed, and few-shot fine-tuning."""
+    import json
+
+    from .stats import mean_ci, paired
+    root = RESULTS / "fedhet"
+    order = [k for k in HET_LABELS if (root / k).exists()]
+    res = {k: {int(p.parent.name[4:]): json.loads(p.read_text())
+               for p in sorted((root / k).glob("seed*/test.json"))} for k in order}
+    rows = []
+    for k in order:
+        st = mean_ci([t["test_ee"] for t in res[k].values()])
+        rows.append({"method": k, "n_seeds": st["n"], "test_ee_mean": st["mean"], "test_ee_ci95": st["ci95"],
+                     "comm_cross_MB": float(np.mean([t["comm_cross_MB"] for t in res[k].values()])),
+                     "comm_intra_MB": float(np.mean([t["comm_intra_MB"] for t in res[k].values()])),
+                     "delivered": float(np.mean([t["test_delivered"] for t in res[k].values()])),
+                     "collisions": float(np.mean([t["test_collisions"] for t in res[k].values()]))})
+    pairs = {}
+    for a, b in (("fedavg_p0.5", "local"), ("fedavg_p0.5", "pooled"), ("fedprox_p0.5", "fedavg_p0.5"),
+                 ("fedavg_p0.5_q8", "fedavg_p0.5"), ("fedavg_p0.5_top10", "fedavg_p0.5"),
+                 ("fedavg_p1", "fedavg_p0.5"), ("pooled", "local")):
+        if a in res and b in res:
+            common = sorted(set(res[a]) & set(res[b]))
+            pairs[f"{a} - {b}"] = paired([res[a][s]["test_ee"] for s in common],
+                                         [res[b][s]["test_ee"] for s in common]) | {"seeds": common}
+    base = {r["policy"]: float(r["test_ee"]) for r in _read_csv(root / "baselines.csv")} \
+        if (root / "baselines.csv").exists() else {}
+    ft = {}
+    for init in ("global", "scratch"):
+        ts = [json.loads(p.read_text()) for p in sorted((root / "finetune" / f"fedavg_p0.5_{init}").glob("seed*/test.json"))]
+        if ts:
+            ft[init] = {"before": mean_ci([t["ee_before"] for t in ts]), "after": mean_ci([t["ee_after"] for t in ts]),
+                        "seeds": [t["seed"] for t in ts], "episodes": ts[0]["episodes"]}
+    if len(ft) == 2:
+        n = min(len(ft["global"]["seeds"]), len(ft["scratch"]["seeds"]))
+        g = [json.loads((root / "finetune" / "fedavg_p0.5_global" / f"seed{s}" / "test.json").read_text())["ee_after"]
+             for s in ft["global"]["seeds"][:n]]
+        sc = [json.loads((root / "finetune" / "fedavg_p0.5_scratch" / f"seed{s}" / "test.json").read_text())["ee_after"]
+              for s in ft["global"]["seeds"][:n]]
+        ft["global_vs_scratch"] = paired(g, sc)
+    (root / "summary.json").write_text(json.dumps({"rows": rows, "paired": pairs, "heuristics": base,
+                                                   "finetune": ft}, indent=2, default=float))
+
+    fig, ax = plt.subplots(figsize=(8.5, 5.2))
+    for i, r in enumerate(rows):
+        x = max(r["comm_cross_MB"], 1.0)
+        ax.errorbar(x, r["test_ee_mean"], yerr=r["test_ee_ci95"], fmt="o", ms=9, capsize=4, color=f"C{i}",
+                    label=f"{HET_LABELS[r['method']]} ({r['n_seeds']} seeds)")
+    for (name, v), ls in zip(sorted(base.items()), ["--", ":", "-."]):
+        ax.axhline(v, color="k", ls=ls, lw=1, label=f"heuristic: {name}")
+    ax.set_xscale("log")
+    ax.set_xlabel("cross-area training traffic (MB, log; local plotted at 1 MB)")
+    ax.set_ylabel("EE on 8 unseen heterogeneous areas (bit/J)")
+    ax.set_title("Heterogeneous areas: generalisation vs traffic (mean ± 95 % CI over seeds)")
+    ax.legend(fontsize=7.5, loc="center left", bbox_to_anchor=(1.01, 0.5))
+    fig.savefig(root / "fig_fedhet.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    for r in rows:
+        print(f"  {r['method']:18s} n={r['n_seeds']} EE {r['test_ee_mean']:6.0f} ± {r['test_ee_ci95']:4.0f}"
+              f"  cross {r['comm_cross_MB']:7.1f} MB  intra {r['comm_intra_MB']:7.1f} MB  coll {r['collisions']:.2f}")
+    for k, p in pairs.items():
+        print(f"  {k:36s} {p['mean']:+6.0f} ± {p['ci95']:4.0f} ({p['rel_pct']:+.1f} %), better in "
+              f"{p['frac_a_better']:.0%} of {len(p['seeds'])} seeds")
+    for k, v in ft.items():
+        print(" ", k, {kk: (round(vv["mean"]) if isinstance(vv, dict) and "mean" in vv else vv) for kk, vv in v.items()})
+
+
 def plot_ris_value():
     """No RIS vs building RIS vs aerial RIS, for the tuned heuristic and learned MAPPO."""
     import json
@@ -513,6 +586,8 @@ if __name__ == "__main__":
         plot_area_maps()
         plot_multiarea()
         plot_traffic_to_target()
+    if cmd == "fedhet":
+        plot_fedhet()
     if cmd == "gate":
         plot_gate()
     elif cmd == "train":
