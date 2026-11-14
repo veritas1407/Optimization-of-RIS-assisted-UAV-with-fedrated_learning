@@ -92,6 +92,17 @@ export function groundTex(trace) {
   });
 }
 
+// Ground outside the simulated area (decoration only): muted blocks with faint streets.
+export function outerTex() {
+  const r = mulberry32(5), t = canvasTex(1024, 1024, (g, w) => {
+    g.fillStyle = '#8e9488'; g.fillRect(0, 0, w, w);
+    for (let i = 0; i < 2500; i++) { g.fillStyle = r() < 0.5 ? `rgba(70,84,62,${0.05 + 0.07 * r()})` : `rgba(190,190,170,${0.04 + 0.06 * r()})`; const s = 6 + r() * 40; g.beginPath(); g.ellipse(r() * w, r() * w, s, s * 0.6, r() * 3, 0, 7); g.fill(); }
+    g.strokeStyle = 'rgba(205,205,200,0.5)'; g.lineWidth = 9;
+    for (let i = 0; i < 4; i++) { const p = 128 + i * 256; g.beginPath(); g.moveTo(p, 0); g.lineTo(p, w); g.moveTo(0, p); g.lineTo(w, p); g.stroke(); }
+  }, true);
+  t.repeat.set(10, 10); return t;
+}
+
 export function gridTex() {
   return canvasTex(1024, 1024, (g, w) => {
     g.clearRect(0, 0, w, w); g.strokeStyle = 'rgba(255,255,255,0.55)'; g.lineWidth = 2;

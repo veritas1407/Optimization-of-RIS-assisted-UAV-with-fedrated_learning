@@ -75,13 +75,13 @@ function hud(id, c, title, alpha, hl = false) {
     + `<div class="row${hl ? ' hl' : ''}"><span class="k">flight energy</span><span class="v">${(c.energy / 1e3).toFixed(1)} kJ</span></div>`
     + `<div class="row ee"><span class="k">EE</span><span class="v">${fmt(c.ee)} bit/J</span></div>`;
 }
-function label3(text, v3, cls = '', alpha = 1, dy = 0, live = false) {
+function label3(text, v3, cls = '', alpha = 1, dy = 0, live = false, dx = 0) {
   const p = v3.clone().project(cam); if (p.z > 1 || alpha <= 0.01) return;
   const [x, y, w, h] = curVP, e = document.createElement('div');
   e.className = `abs lbl ${cls}${live ? ' live' : ''}`; e.innerHTML = text; e.style.opacity = clamp(alpha);
-  e.style.left = (x + (p.x * 0.5 + 0.5) * w) + 'px'; e.style.top = (y + (-p.y * 0.5 + 0.5) * h + dy) + 'px'; $('labels').appendChild(e);
+  e.style.left = (x + (p.x * 0.5 + 0.5) * w + dx) + 'px'; e.style.top = (y + (-p.y * 0.5 + 0.5) * h + dy) + 'px'; $('labels').appendChild(e);
 }
-const label = (text, sim, cls, alpha, dy, live) => label3(text, P(...sim), cls, alpha, dy, live);
+const label = (text, sim, cls, alpha, dy, live, dx) => label3(text, P(...sim), cls, alpha, dy, live, dx);
 const edge = (tl, dur, e = 0.5) => Math.max(1 - ramp(tl, 0, e), ramp(tl, dur - e, dur));
 
 function view3(scene, pos, look, fov, vp = [0, 0, 1920, 1080], camera = cam, up = null) {
@@ -151,8 +151,8 @@ const S = {
   4(tl, dur, shot) {
     const play = tl >= 9.8, ts = clamp((tl - 9.8) * 0.75, 0, 4.9), sc = lerp(1, RIS_SCALE, ramp(tl, 6.3, 8.6));
     upd('ris', ts, { links: play, fadeSim: 0.15, vt: tl, risScale: sc, human: tl < 6.9, risGlow: ramp(tl, 6.3, 8.6) });
-    view(M.ris, camPath([{ t: 0, ...C_CLOSE_A }, { t: 5.5, ...C_CLOSE_B }, { t: 9.6, ...C_WIDE }, { t: 16, ...C_WIDE2 }], tl));
-    label('1.8 m person', [371.9, 94.3, 47.95], 'sm', win(tl, 1.0, 5.6, 0.4)); label('RIS panel (1 m × 1 m)', [370, 95.5, 48.75], 'gold sm', win(tl, 1.0, 5.6, 0.4));
+    view(M.ris, camPath([{ t: 0, ...C_CLOSE_A }, { t: 5.5, ...C_CLOSE_B }, { t: 7.7, pos: [455, 112, 120], look: [360, 96, 44], fov: 30 }, { t: 9.8, ...C_WIDE }, { t: 16, ...C_WIDE2 }], tl));
+    label('1.8 m person', [371.9, 94.3, 46.7], 'sm', win(tl, 1.0, 5.6, 0.4), 0, false, -150); label('RIS panel (1 m × 1 m)', [370, 95.5, 48.75], 'gold sm', win(tl, 1.0, 5.6, 0.4));
     label('RIS, drawn ×8 from here on', [370, 95.5, 56], 'gold', win(tl, 7.4, 10.6, 0.4));
     if (play) { const r = M.ris.tr; label('drones, about 300 m from the RIS', [78, 30, 76], '', win(tl, 10.6, dur - 0.4, 0.5)); label('RIS', [r.ris.center[0], r.ris.center[1], 60], 'gold', win(tl, 10.6, dur - 0.4, 0.5)); }
     pip(M.ris, ramp(tl, 10.4, 11.2) * (1 - ramp(tl, dur - 0.5, dur)));
@@ -196,9 +196,9 @@ const S = {
   },
   8(tl, dur, shot) {
     const st = FL.update(tl), u = smooth(tl / dur);
-    view3(FL.scene, new THREE.Vector3(-185, lerp(610, 585, u), lerp(790, 755, u)), new THREE.Vector3(-185, 30, 62), 40);
+    view3(FL.scene, new THREE.Vector3(-150, lerp(610, 585, u), lerp(790, 755, u)), new THREE.Vector3(-150, 30, 62), 36);
     FL.train.forEach((T, i) => label3(`${T.a.n_devices} sensors · RIS ${T.a.ris_elements[0]}×${T.a.ris_elements[1]}`, T.label, 'sm', ramp(tl, 1.4 + i * 0.1, 2.0 + i * 0.1) * (1 - ramp(tl, dur - 0.5, dur)), 34, true));
-    if (st.testVisible > 0) label3('8 unseen test areas', FL.test[0].label.clone().add(new THREE.Vector3(-70, 0, -30)), 'sm', st.testVisible * (1 - ramp(tl, dur - 0.5, dur)), 0);
+    if (st.testVisible > 0) label3('8 unseen test areas', FL.test[0].label.clone().add(new THREE.Vector3(-70, 0, -30)), 'sm', st.testVisible * (1 - ramp(tl, dur - 0.5, dur)), 0, false, -70);
     label3('cloud aggregator (FedAvg)', FL.cloud.position.clone().add(new THREE.Vector3(0, 34, 0)), 'sm', win(tl, 1.2, dur - 0.5, 0.4));
     lower(shot, win(tl, 0.4, dur - 0.3));
     let h = '';
@@ -254,7 +254,17 @@ async function init() {
   window.debug = {
     fps: FPS, duration: DURATION, frames: Math.round(DURATION * FPS), shots: SHOTS, play: { 5: PLAY5, 6: PLAY6, 7: PLAY7 }, TEXT, ROUNDS,
     simPos: (key, t) => M[key].simPosAt(t), links: (key, t, f) => M[key].linksAt(t, f), counters: (key, t) => M[key].countersAt(t), last: () => JSON.parse(JSON.stringify(LAST)),
-    texts: () => [...$('ov').querySelectorAll('*')].filter((e) => e.children.length === 0 || e.classList.contains('lbl')).filter((e) => !e.closest('.live') && e.textContent.trim() && +getComputedStyle(e.closest('#ov > *') || e).opacity > 0.02).map((e) => e.textContent.trim()),
+    // visible static overlay text (live counters, live labels and the repository URL excluded)
+    texts: () => {
+      const out = [], vis = (e) => +getComputedStyle(e).opacity > 0.02;
+      for (const e of $('ov').children) {
+        if (e.id === 'labels') { for (const l of e.children) if (!l.classList.contains('live') && vis(l)) out.push(l.innerText); continue; }
+        if (e.classList.contains('live') || !vis(e) || !e.innerText.trim()) continue;
+        const c = e.cloneNode(true); c.querySelectorAll('[style*="opacity:0;"], [style*="opacity: 0;"]').forEach((x) => x.remove());
+        out.push(e.innerText.replace(TEXT.repo, ''));
+      }
+      return out.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    },
     hud: (id) => $(id).innerText,
   };
   renderFrame(0); window.ready = true;

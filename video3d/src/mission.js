@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
-import { P, PV, clamp, lerp, catmull, mulberry32, facadeTex, groundTex, gridTex, glowTex, skyTex, humanTex, setSegment, firstHit } from './util.js';
+import { P, PV, clamp, lerp, catmull, mulberry32, facadeTex, groundTex, gridTex, glowTex, skyTex, humanTex, outerTex, setSegment, firstHit } from './util.js';
 
 export const DRONE_SCALE = 12, RIS_SCALE = 8, LAMBDA = 0.125;
 export const UAV_COLORS = ['#1f77b4', '#ff7f0e', '#2ca02c', '#9467bd'];
@@ -13,7 +13,7 @@ const IDLE_GOLD = new THREE.Color('#9a7c1e');
 
 let SHARED = null;
 function shared() {
-  if (!SHARED) SHARED = { glow: glowTex(), sky: skyTex(), grid: gridTex(), human: humanTex(),
+  if (!SHARED) SHARED = { outer: outerTex(), glow: glowTex(), sky: skyTex(), grid: gridTex(), human: humanTex(),
     facades: [facadeTex(11, '#d6cfbf', '#4a6a86'), facadeTex(23, '#c6cbd1', '#44688a'), facadeTex(37, '#d9cdb6', '#527082')] };
   return SHARED;
 }
@@ -79,7 +79,7 @@ export class Mission {
     sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
     sc.add(sun, sun.target);
 
-    const outer = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ color: 0x8d9087, roughness: 1 }));
+    const outer = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshStandardMaterial({ map: S.outer, roughness: 1 }));
     outer.rotation.x = -Math.PI / 2; outer.position.copy(P(A / 2, A / 2, -0.3)); outer.receiveShadow = true; sc.add(outer);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(A, A), new THREE.MeshStandardMaterial({ map: groundTex(tr), roughness: 0.95 }));
     ground.rotation.x = -Math.PI / 2; ground.position.copy(P(A / 2, A / 2, 0)); ground.receiveShadow = true; sc.add(ground);
@@ -105,7 +105,7 @@ export class Mission {
       const roof = new THREE.MeshStandardMaterial({ color: 0x9a9b9c, roughness: 0.95 });
       const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), [side(d), side(d), roof, roof, side(w), side(w)]);
       mesh.position.copy(P((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, h / 2)); mesh.castShadow = mesh.receiveShadow = true; sc.add(mesh);
-      const par = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.9, d + 0.6), new THREE.MeshStandardMaterial({ color: 0x4f5154, roughness: 1 }));
+      const par = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, 0.9, d + 0.6), new THREE.MeshStandardMaterial({ color: 0x9c9d9e, roughness: 1 }));
       par.position.copy(P((b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, h + 0.3)); par.castShadow = true; sc.add(par);
       // rooftop units (decoration), kept away from the RIS mount
       const rr = mulberry32(100 + i), unitM = new THREE.MeshStandardMaterial({ color: 0xc9cbcc, roughness: 0.8 }), rc = tr.ris && tr.ris.center;
@@ -197,7 +197,7 @@ export class Mission {
     let e1 = new THREE.Vector3().crossVectors(new THREE.Vector3(0, 1, 0), n3); if (e1.lengthSq() < 1e-6) e1.set(1, 0, 0); e1.normalize();
     const e2 = new THREE.Vector3().crossVectors(n3, e1).normalize(), s = r.element_spacing_m, N = r.elements[0];
     const g = new THREE.Group(); g.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(e1, e2, n3));
-    const back = new THREE.Mesh(new THREE.BoxGeometry(N * s + 0.08, N * s + 0.08, 0.04), new THREE.MeshStandardMaterial({ color: 0x23262b, roughness: 0.6 })); back.position.z = -0.045; back.castShadow = true; g.add(back);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(N * s + 0.08, N * s + 0.08, 0.04), new THREE.MeshStandardMaterial({ color: 0x8a6f24, roughness: 0.55, emissive: 0x3a2c08, emissiveIntensity: 0.6 })); back.position.z = -0.045; back.castShadow = true; g.add(back);
     const tiles = new THREE.InstancedMesh(new THREE.PlaneGeometry(s * 0.88, s * 0.88), new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, toneMapped: false }), N * N);
     const m = new THREE.Matrix4(), local = [];
     for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const x = (i - (N - 1) / 2) * s, y = (j - (N - 1) / 2) * s; local.push([x, y]); m.makeTranslation(x, y, 0.004); tiles.setMatrixAt(j * N + i, m); tiles.setColorAt(j * N + i, IDLE_GOLD); }
@@ -214,9 +214,12 @@ export class Mission {
       this.scene.add(pole, arm);
     }
   }
-  risCenter(pos) {   // display position of the panel centre
+  // Display position of the panel centre. The building panel keeps its bottom edge in place when drawn larger,
+  // so the enlarged panel does not sink into the roof (a display-only shift of at most 3.5 m).
+  risCenter(pos, scale = RIS_SCALE) {
     if (!this.ris) return null;
-    return this.aerial ? pos[this.carrier].clone().add(new THREE.Vector3(0, -4.5, 0)) : this.ris.center;
+    if (this.aerial) return pos[this.carrier].clone().add(new THREE.Vector3(0, -4.5, 0));
+    return this.ris.center.clone().addScaledVector(this.ris.e2, (scale - 1) * 0.5 * this.tr.ris.side_m);
   }
 
   // ------------------------------------------------------------------ radio links, pulses, extras
@@ -287,7 +290,7 @@ export class Mission {
       s.ringM.opacity = awake ? 0.75 : 0; const rs = 1 + 0.1 * Math.sin(vt * 5 + i); s.ring.scale.set(rs, rs, 1);
     });
     // RIS panel: position, display scale and illustrative 2-bit phase pattern for the link it currently serves
-    const links = o.links === false ? [] : this.linksAt(t, o.fadeSim ?? 0.5), rc = this.risCenter(pos);
+    const links = o.links === false ? [] : this.linksAt(t, o.fadeSim ?? 0.5), rc = this.risCenter(pos, o.risScale ?? RIS_SCALE);
     if (this.ris) {
       const R = this.ris, scale = o.risScale ?? RIS_SCALE; R.g.scale.setScalar(scale); R.g.position.copy(rc);
       const k = Math.min(Math.floor(clamp(t, 0, this.T - 1e-6) / this.dt), this.M - 1), via = links.filter((l) => l.via_ris);
