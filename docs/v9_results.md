@@ -206,6 +206,65 @@ from *different* areas — which FedAvg obtains without moving raw data.
 
 ---
 
+## 4b. Heterogeneous (non-IID) multi-area FL with partial participation (v9.2)
+
+(`results_v9/fedhet/`, `fig_fedhet.png`, `summary.json`; code `v9/fedhet.py`.) The harder,
+more realistic FL setting:
+
+- **12 training areas (clients)** that differ in layout *and* deployment — 15–31 devices,
+  data per device × 0.6–1.5, device power 6–14 dBm, RIS 10 × 10 to 20 × 20
+  (`config.hetero_area`); 4 validation and **8 unseen test areas** drawn the same way.
+  The decentralised heuristic's EE varies from 7,030 to 8,790 bit/J across the test areas
+  (straight line: 5,896–7,814).
+- **Partial participation:** each round the cloud samples 50 % of the areas; they start from
+  the global actor, run E = 4 local MAPPO-CTDE updates and upload their update.
+- **Equal budget:** every mode uses the same 11,520 training missions in total.
+- **Compressed uploads:** 8-bit quantised updates, or top-10 % sparsified updates with
+  client-side error feedback.
+
+| Mode (5 seeds, 96 test missions on 8 unseen areas) | EE (bit/J) | Cross-area traffic |
+|---|---|---|
+| Local only (mean of the 12 area models) | 7,200 ± 111 | 0 |
+| Pooled raw data | 7,761 ± 142 | 1,081 MB |
+| **FedAvg, 50 % of areas per round** | **7,895 ± 73** | **85 MB** |
+| FedAvg 50 %, 8-bit updates | 7,869 ± 90 | 53 MB |
+| FedAvg 50 %, top-10 % updates | 7,844 ± 33 | 51 MB |
+| FedProx (μ = 0.01), 50 % | 7,807 ± 29 | 85 MB |
+| FedAvg, all 12 areas per round (30 rounds) | 7,223 ± 138 | 85 MB |
+| *heuristic: centralised greedy (tuned on the heterogeneous validation areas)* | *8,522 ± 224* | — |
+| *heuristic: decentralised greedy* | *7,832 ± 212* | — |
+| *heuristic: straight line* | *6,743 ± 194* | — |
+
+Paired by seed:
+- **FedAvg (50 %) − local: +695 ± 108 bit/J (+9.7 %), 5 of 5 seeds** — with non-IID areas the
+  benefit of federating is twice as large as in §4 (+4.9 %).
+- FedAvg (50 %) − pooled: +134 ± 193 bit/J (+1.7 %, not significant; 4 of 5 seeds) — FedAvg is
+  **at least as good as pooling all raw data**, with 13× less cross-area traffic.
+- 8-bit / top-10 % uploads − full precision: −26 ± 122 / −51 ± 69 bit/J (−0.3 / −0.7 %, not
+  significant) for **38–40 % less cross-area traffic**.
+- FedProx − FedAvg: −87 ± 80 bit/J (−1.1 %, 0 of 5 seeds better): the proximal term does not
+  help here.
+- All areas per round − 50 %: −672 ± 149 bit/J (−8.5 %, 0 of 5 seeds). At the same budget,
+  full participation means half as many averaging rounds (30 vs 60). ROUNDS_CONTROL
+- Local area models violate the separation rule more often (1.39 per mission vs 0.00–0.09 for
+  every federated variant): the federated model is also the safer one.
+
+**Few-shot adaptation in a new area** (`fedhet/finetune/`). Each unseen area's ground station
+adapts a model using only its own 320 missions (40 PPO updates; for the federated model the
+fresh critic is first trained alone for 8 updates):
+
+| Starting point (5 seeds, mean over the 8 unseen areas) | before | after 320 missions |
+|---|---|---|
+| **global FedAvg model** | 7,895 ± 73 | **7,998 ± 56** |
+| random initialisation (training from scratch) | 4,669 ± 23 | 6,884 ± 41 |
+
+- Starting from the federated model is **+1,114 ± 56 bit/J (+16.2 %) better** than training
+  from scratch on the same missions (5 of 5 seeds): a new area is useful from the first
+  mission instead of after thousands.
+- After adaptation the learned policy is above the decentralised heuristic in every seed
+  (7,949–8,071 vs 7,832, +2.1 % on average — modest, within the heuristic's per-mission
+  spread) and still below the centralised full-information heuristic (8,522).
+
 ## 5. Where should the RIS be? (learned flight vs heuristics)
 
 (`results_v9/fig_ris_value.png`)
