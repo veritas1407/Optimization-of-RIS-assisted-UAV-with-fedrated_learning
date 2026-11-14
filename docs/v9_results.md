@@ -231,6 +231,7 @@ more realistic FL setting:
 | FedAvg 50 %, top-10 % updates | 7,844 ± 33 | 51 MB |
 | FedProx (μ = 0.01), 50 % | 7,807 ± 29 | 85 MB |
 | FedAvg, all 12 areas per round (30 rounds) | 7,223 ± 138 | 85 MB |
+| FedAvg, all 12 areas per round, E = 2 (60 rounds) | 7,355 ± 323 | 170 MB |
 | *heuristic: centralised greedy (tuned on the heterogeneous validation areas)* | *8,522 ± 224* | — |
 | *heuristic: decentralised greedy* | *7,832 ± 212* | — |
 | *heuristic: straight line* | *6,743 ± 194* | — |
@@ -245,7 +246,14 @@ Paired by seed:
 - FedProx − FedAvg: −87 ± 80 bit/J (−1.1 %, 0 of 5 seeds better): the proximal term does not
   help here.
 - All areas per round − 50 %: −672 ± 149 bit/J (−8.5 %, 0 of 5 seeds). At the same budget,
-  full participation means half as many averaging rounds (30 vs 60). ROUNDS_CONTROL
+  full participation means half as many averaging rounds (30 vs 60) — but that is **not**
+  the explanation: a control with all areas per round and E = 2 (60 rounds, same budget)
+  is still −540 ± 386 bit/J (−6.8 %, 0 of 5 seeds better than 50 %) and only +1.8 % (n.s.)
+  over the 30-round version. Likely reason (not separately tested): at a fixed budget,
+  sampling half the areas lets each participant run 4 local updates per round in 60 rounds,
+  i.e. 240 local steps of progress for the global model, against 120 for both full-
+  participation variants (60 × 2 or 30 × 4). Partial participation is therefore not just a
+  necessity but, here, the better use of the same compute.
 - Local area models violate the separation rule more often (1.39 per mission vs 0.00–0.09 for
   every federated variant): the federated model is also the safer one.
 
@@ -410,5 +418,9 @@ by only 0.5 %. Learned MAPPO trajectories beat straight-line flight by 15 % and 
 planner.
 Federated learning does not help three UAVs within one area, but across city areas FedAvg of
 the area actors generalises to eight unseen layouts 4.9 % better than training each area
-alone, recovering 64 % of the benefit of pooling all raw data with 8.8× less cross-area
-traffic and without sharing raw data.
+alone — not because it sees more data (4× more own data gives +1 %) — recovering 64 % of the
+benefit of pooling all raw data with 8.8× less cross-area traffic and without sharing raw
+data. With twelve heterogeneous areas and 50 % participation the gain grows to 9.7 %,
+FedAvg matches pooling with 13× less cross-area traffic, 8-bit or top-10 % compressed
+uploads cost nothing measurable, and the federated model fine-tuned on 320 missions in a
+new area beats training from scratch by 16 % and the like-for-like heuristic by 2 %.
