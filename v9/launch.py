@@ -122,7 +122,16 @@ def finetune(seeds, episodes=320):
                                         "--episodes", str(episodes), "--seed", str(s)]) for s in seeds]
 
 
-GROUPS = {"fedhet": fedhet, "finetune": finetune, "control": control, "pilots": pilots, "pilots2": pilots2, "pilots3": pilots3, "single": single, "presets": presets,
+def rounds(seeds, episodes=11_520):
+    """Control for the full-participation result: all 12 areas per round but E = 2 local
+    updates, so there are as many averaging rounds (60) as FedAvg with 50 % and E = 4, at the
+    same total number of training missions."""
+    return [(f"fedhet/fedavg_p1_E2_s{s}", ["--exp", "fedhet", "--skip-existing", "--E", "2", "--episodes",
+                                            str(episodes), "--seed", str(s), "--tag", "fedavg_p1_E2",
+                                            "--mode", "fedavg", "--participation", "1"]) for s in seeds]
+
+
+GROUPS = {"rounds": rounds, "fedhet": fedhet, "finetune": finetune, "control": control, "pilots": pilots, "pilots2": pilots2, "pilots3": pilots3, "single": single, "presets": presets,
           "multiarea": multiarea, "campaign": campaign, "post": post}
 
 

@@ -401,7 +401,8 @@ def plot_traffic_to_target(targets=(7600, 7800, 8000)):
 
 HET_LABELS = {"local": "Local only", "pooled": "Pooled raw data", "fedavg_p0.5": "FedAvg, 50 % of areas/round",
               "fedavg_p1": "FedAvg, all areas/round", "fedprox_p0.5": "FedProx, 50 %",
-              "fedavg_p0.5_q8": "FedAvg 50 %, 8-bit updates", "fedavg_p0.5_top10": "FedAvg 50 %, top-10 % updates"}
+              "fedavg_p0.5_q8": "FedAvg 50 %, 8-bit updates", "fedavg_p0.5_top10": "FedAvg 50 %, top-10 % updates",
+              "fedavg_p1_E2": "FedAvg, all areas/round, E=2 (60 rounds)"}
 
 
 def plot_fedhet():
@@ -425,7 +426,8 @@ def plot_fedhet():
     pairs = {}
     for a, b in (("fedavg_p0.5", "local"), ("fedavg_p0.5", "pooled"), ("fedprox_p0.5", "fedavg_p0.5"),
                  ("fedavg_p0.5_q8", "fedavg_p0.5"), ("fedavg_p0.5_top10", "fedavg_p0.5"),
-                 ("fedavg_p1", "fedavg_p0.5"), ("pooled", "local")):
+                 ("fedavg_p1", "fedavg_p0.5"), ("fedavg_p1_E2", "fedavg_p0.5"), ("fedavg_p1_E2", "fedavg_p1"),
+                 ("pooled", "local")):
         if a in res and b in res:
             common = sorted(set(res[a]) & set(res[b]))
             pairs[f"{a} - {b}"] = paired([res[a][s]["test_ee"] for s in common],
